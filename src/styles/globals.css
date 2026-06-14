@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-app: #FAFAFA;
+  --bg-panel: #FFFFFF;
+  --border: #E8E8E8;
+  --text-primary: #0A0A0A;
+  --text-secondary: #AAAAAA;
+  --bg-input: #F5F5F5;
+  --accent-line: #0A0A0A;
+  --accent-primary: #3B5BDB;
+  --accent-primary-text: #ffffff;
+
+  /* 글래스모피즘 — 라이트 모드 */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(0, 0, 0, 0.07);
+  --glass-blur: blur(20px) saturate(180%);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+.dark {
+  --bg-app: #0A0A0A;
+  --bg-panel: #111111;
+  --border: #1E1E1E;
+  --text-primary: #F0F0F0;
+  --text-secondary: #555555;
+  --bg-input: #161616;
+  --accent-line: #F0F0F0;
+  --accent-primary: #4C6EF5;
+  --accent-primary-text: #ffffff;
+
+  /* 글래스모피즘 — 다크 모드 */
+  --glass-bg: rgba(14, 14, 18, 0.68);
+  --glass-border: rgba(255, 255, 255, 0.07);
+  --glass-blur: blur(20px) saturate(160%);
+  --glass-shadow: 0 4px 32px rgba(0, 0, 0, 0.5);
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: 'Pretendard', 'Inter', sans-serif;
+  font-size: 14px;
+}
+
+/* 글래스 패널 유틸리티 클래스 */
+.glass {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+}
+
+/* 사이드바 — 오른쪽 구분선 */
+.glass-sidebar {
+  border-right: 1px solid var(--glass-border) !important;
+}
+
+/* 탭바 / 헤더 — 아래쪽 구분선 */
+.glass-bar {
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+/* Monaco 에디터 줄 번호 오른쪽 세로 구분선 (Notepad++ 스타일) */
+.monaco-editor .margin {
+  border-right: 1px solid rgba(128, 128, 128, 0.15) !important;
+}
+.dark .monaco-editor .margin {
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50%       { opacity: 1;   transform: scale(1.15); }
+}
