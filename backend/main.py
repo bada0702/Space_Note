@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db import init_db
 from auth import require_auth
-from routers import categories
+from routers import categories, notes
 
 app = FastAPI(title="SpaceNote Backend")
 
@@ -28,3 +28,4 @@ def health():
 
 
 app.include_router(categories.router, dependencies=[Depends(require_auth)])
+app.include_router(notes.router, dependencies=[Depends(require_auth)])
