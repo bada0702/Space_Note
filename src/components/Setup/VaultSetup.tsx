@@ -3,7 +3,7 @@ import { useNotesStore } from '../../store/notesStore'
 
 async function fetchDefaultVault(): Promise<string> {
   try {
-    const res = await fetch('http://localhost:8001/health')
+    const res = await fetch('/api/health')
     const data = await res.json()
     return data.default_vault ?? ''
   } catch {

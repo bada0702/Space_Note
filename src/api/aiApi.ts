@@ -1,17 +1,13 @@
 import type { AIModel, AIChatMessage, AISettings } from '../types'
-
-const BASE = 'http://localhost:8001'
+import { API_BASE, authHeaders, apiFetch } from './client'
 
 export const aiApi = {
   getSettings: (): Promise<AISettings> =>
-    fetch(`${BASE}/ai/settings`).then(r => r.json()),
+    apiFetch<AISettings>('/ai/settings'),
 
-  patchSettings: (data: Partial<AISettings>): Promise<void> =>
-    fetch(`${BASE}/ai/settings`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }).then(() => {}),
+  patchSettings: async (data: Partial<AISettings>): Promise<void> => {
+    await apiFetch('/ai/settings', { method: 'PATCH', body: JSON.stringify(data) })
+  },
 
   async *streamChat(params: {
     model: AIModel
@@ -21,9 +17,9 @@ export const aiApi = {
     useRag: boolean
     useWiki: boolean
   }): AsyncGenerator<{ text?: string; error?: string }> {
-    const resp = await fetch(`${BASE}/ai/chat`, {
+    const resp = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({
         model: params.model,
         messages: params.messages,
