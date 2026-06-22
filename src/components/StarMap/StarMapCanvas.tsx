@@ -12,9 +12,10 @@ interface Tooltip {
 interface OrbitData {
   center: THREE.Vector3
   radius: number
+  e1: THREE.Vector3   // 궤도 평면 기저 벡터 1
+  e2: THREE.Vector3   // 궤도 평면 기저 벡터 2
   speed: number
   angle: number
-  inclination: number
   selfRotY: number
 }
 
@@ -37,17 +38,211 @@ const STAR_POSITIONS = [
   new THREE.Vector3(55, -85, 125),
 ]
 
-// 행성 팔레트 (목성, 금성, 지구, 화성, 해왕성, 토성, 천왕성, 분홍거성)
-const PLANET_PALETTES = [
-  { base: 0xd4956a, ring: 0x9a5020 },
-  { base: 0xe8d580, ring: 0xb09030 },
-  { base: 0x5a90e0, ring: 0x2050a0 },
-  { base: 0xd04040, ring: 0x882020 },
-  { base: 0x90b8e0, ring: 0x4070a0 },
-  { base: 0xd8b870, ring: 0x907030 },
-  { base: 0x60d8d0, ring: 0x2090a0 },
-  { base: 0xe0a0d8, ring: 0xa060a0 },
+// ── 색 유틸 ──────────────────────────────────────────────────
+const clamp255 = (v: number) => Math.max(0, Math.min(255, v | 0))
+function rgb(r: number, g: number, b: number, a = 1) {
+  return `rgba(${clamp255(r)},${clamp255(g)},${clamp255(b)},${a})`
+}
+
+// 절차적 표면 텍스처: 가스/얼음 거성용 가로 줄무늬
+function paintBands(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  palette: [number, number, number][], swirls: number, swirlAlpha: number,
+) {
+  for (let y = 0; y < h; y++) {
+    const f = (y / h) * (palette.length - 1)
+    const i = Math.floor(f)
+    const frac = f - i
+    const a = palette[i]
+    const b = palette[Math.min(i + 1, palette.length - 1)]
+    const n = (Math.random() - 0.5) * 12
+    ctx.fillStyle = rgb(
+      a[0] + (b[0] - a[0]) * frac + n,
+      a[1] + (b[1] - a[1]) * frac + n,
+      a[2] + (b[2] - a[2]) * frac + n,
+    )
+    ctx.fillRect(0, y, w, 1)
+  }
+  // 난류 소용돌이 (가로로 늘어난 타원)
+  for (let k = 0; k < swirls; k++) {
+    const y = Math.random() * h
+    const x = Math.random() * w
+    const rw = 8 + Math.random() * 40
+    const rh = 1.5 + Math.random() * 4
+    const tone = Math.random() < 0.5 ? 255 : 0
+    ctx.fillStyle = rgb(tone, tone, tone, Math.random() * swirlAlpha)
+    ctx.beginPath()
+    ctx.ellipse(x, y, rw, rh, 0, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+// 불규칙 얼룩 (대륙/지형/크레이터)
+function blobs(
+  ctx: CanvasRenderingContext2D, w: number, h: number,
+  count: number, color: [number, number, number], rmin: number, rmax: number, alpha: number,
+) {
+  for (let k = 0; k < count; k++) {
+    const x = Math.random() * w
+    const y = h * (0.15 + Math.random() * 0.7) // 극지방은 비움
+    const r = rmin + Math.random() * (rmax - rmin)
+    const jitter = (Math.random() - 0.5) * 40
+    ctx.fillStyle = rgb(color[0] + jitter, color[1] + jitter, color[2] + jitter, alpha)
+    ctx.beginPath()
+    ctx.ellipse(x, y, r, r * (0.6 + Math.random() * 0.6), Math.random() * Math.PI, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+// 극관 (지구/화성)
+function polarCaps(ctx: CanvasRenderingContext2D, w: number, h: number, depth: number) {
+  const g1 = ctx.createLinearGradient(0, 0, 0, h * depth)
+  g1.addColorStop(0, 'rgba(255,255,255,0.95)')
+  g1.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g1
+  ctx.fillRect(0, 0, w, h * depth)
+  const g2 = ctx.createLinearGradient(0, h, 0, h * (1 - depth))
+  g2.addColorStop(0, 'rgba(255,255,255,0.95)')
+  g2.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g2
+  ctx.fillRect(0, h * (1 - depth), w, h * depth)
+}
+
+type PlanetKind = {
+  name: string
+  size: number
+  ring: 'saturn' | 'uranus' | null
+  paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
+}
+
+const PLANET_KINDS: PlanetKind[] = [
+  {
+    name: 'jupiter', size: 4.7, ring: null,
+    paint: (c, w, h) => {
+      paintBands(c, w, h, [
+        [216, 176, 132], [240, 222, 188], [198, 150, 110], [232, 210, 178],
+        [180, 130, 96], [238, 224, 196], [206, 162, 120],
+      ], 220, 0.18)
+      // 대적점
+      c.fillStyle = rgb(196, 88, 64, 0.85)
+      c.beginPath()
+      c.ellipse(w * 0.32, h * 0.62, w * 0.06, h * 0.05, 0, 0, Math.PI * 2)
+      c.fill()
+    },
+  },
+  {
+    name: 'saturn', size: 4.3, ring: 'saturn',
+    paint: (c, w, h) => paintBands(c, w, h, [
+      [228, 206, 158], [240, 226, 190], [214, 188, 140], [236, 220, 182], [206, 178, 130],
+    ], 150, 0.12),
+  },
+  {
+    name: 'venus', size: 3.1, ring: null,
+    paint: (c, w, h) => paintBands(c, w, h, [
+      [232, 206, 150], [246, 228, 184], [220, 188, 132], [240, 218, 168], [226, 198, 144],
+    ], 320, 0.22),
+  },
+  {
+    name: 'earth', size: 3.1, ring: null,
+    paint: (c, w, h) => {
+      // 바다
+      c.fillStyle = rgb(28, 64, 120)
+      c.fillRect(0, 0, w, h)
+      paintBands(c, w, h, [[26, 60, 116], [34, 78, 140], [24, 56, 110]], 60, 0.06)
+      // 대륙
+      blobs(c, w, h, 22, [70, 120, 66], w * 0.03, w * 0.08, 0.9)
+      blobs(c, w, h, 16, [120, 110, 70], w * 0.02, w * 0.05, 0.6)
+      polarCaps(c, w, h, 0.1)
+      // 구름
+      blobs(c, w, h, 28, [255, 255, 255], w * 0.02, w * 0.06, 0.4)
+    },
+  },
+  {
+    name: 'mars', size: 2.6, ring: null,
+    paint: (c, w, h) => {
+      paintBands(c, w, h, [[196, 108, 66], [176, 92, 56], [206, 122, 78], [168, 84, 52]], 80, 0.1)
+      blobs(c, w, h, 26, [128, 62, 40], w * 0.02, w * 0.06, 0.5)
+      polarCaps(c, w, h, 0.07)
+    },
+  },
+  {
+    name: 'neptune', size: 3.7, ring: null,
+    paint: (c, w, h) => {
+      paintBands(c, w, h, [[42, 78, 168], [60, 104, 196], [38, 70, 150], [70, 116, 206]], 90, 0.1)
+      // 대흑점
+      c.fillStyle = rgb(20, 38, 96, 0.6)
+      c.beginPath()
+      c.ellipse(w * 0.6, h * 0.42, w * 0.05, h * 0.045, 0, 0, Math.PI * 2)
+      c.fill()
+    },
+  },
+  {
+    name: 'uranus', size: 3.6, ring: 'uranus',
+    paint: (c, w, h) => paintBands(c, w, h, [
+      [150, 214, 214], [180, 230, 226], [136, 200, 202], [172, 224, 220],
+    ], 50, 0.06),
+  },
+  {
+    name: 'mercury', size: 2.3, ring: null,
+    paint: (c, w, h) => {
+      paintBands(c, w, h, [[126, 116, 104], [150, 140, 126], [110, 102, 92]], 40, 0.08)
+      blobs(c, w, h, 40, [80, 74, 66], w * 0.008, w * 0.03, 0.5)
+      blobs(c, w, h, 24, [180, 172, 158], w * 0.006, w * 0.02, 0.4)
+    },
+  },
 ]
+
+function makePlanetTexture(kind: PlanetKind): THREE.Texture {
+  const w = 512
+  const h = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  kind.paint(ctx, w, h)
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = THREE.RepeatWrapping
+  return tex
+}
+
+// 토성형 고리 텍스처 (가로 = 반경 방향, Cassini 간극 포함)
+function makeRingTexture(): THREE.Texture {
+  const w = 256
+  const h = 8
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  for (let x = 0; x < w; x++) {
+    const t = x / w
+    let a = 0.85
+    a *= 0.6 + 0.4 * Math.sin(t * 46)           // 미세 밴딩
+    if (t < 0.04) a = 0                          // 안쪽 빈 공간
+    if (t > 0.46 && t < 0.52) a *= 0.12          // Cassini 간극
+    a *= 1 - t * 0.35                            // 바깥쪽 옅어짐
+    const tone = 205 + Math.random() * 35
+    ctx.fillStyle = rgb(tone, tone - 18, tone - 52, Math.max(0, a))
+    ctx.fillRect(x, 0, 1, h)
+  }
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+// 반경 방향으로 텍스처가 펼쳐지도록 UV를 재계산한 고리 지오메트리
+function makeRingGeometry(inner: number, outer: number): THREE.RingGeometry {
+  const g = new THREE.RingGeometry(inner, outer, 80, 1)
+  const pos = g.attributes.position
+  const uv = g.attributes.uv
+  const v = new THREE.Vector3()
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i)
+    const r = v.length()
+    uv.setXY(i, (r - inner) / (outer - inner), 0.5)
+  }
+  return g
+}
 
 function makeGlowTexture(): THREE.Texture {
   const size = 256
@@ -63,6 +258,29 @@ function makeGlowTexture(): THREE.Texture {
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, size, size)
+  return new THREE.CanvasTexture(canvas)
+}
+
+// 부드러운 성운 구름 텍스처
+function makeNebulaTexture(r: number, g: number, b: number): THREE.Texture {
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.clearRect(0, 0, size, size)
+  for (let k = 0; k < 14; k++) {
+    const x = size / 2 + (Math.random() - 0.5) * size * 0.5
+    const y = size / 2 + (Math.random() - 0.5) * size * 0.5
+    const rad = size * (0.12 + Math.random() * 0.28)
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, rad)
+    grad.addColorStop(0, rgb(r, g, b, 0.5))
+    grad.addColorStop(1, rgb(r, g, b, 0))
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.arc(x, y, rad, 0, Math.PI * 2)
+    ctx.fill()
+  }
   return new THREE.CanvasTexture(canvas)
 }
 
@@ -104,6 +322,7 @@ export function StarMapCanvas() {
 
     const width = el.clientWidth || 800
     const height = el.clientHeight || 600
+    const disposables: { dispose: () => void }[] = []
 
     // 표시 대상 필터링
     const visibleNotes = starMapFilter
@@ -115,8 +334,8 @@ export function StarMapCanvas() {
 
     // ── Scene ────────────────────────────────────────────────
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x020408)
-    scene.fog = new THREE.FogExp2(0x020408, 0.0005)
+    scene.background = new THREE.Color(0x02030a)
+    scene.fog = new THREE.FogExp2(0x02030a, 0.0004)
 
     // 카메라 초점 (필터 시 해당 항성 위치)
     let lookTarget = new THREE.Vector3(0, 0, 0)
@@ -127,41 +346,81 @@ export function StarMapCanvas() {
       initCamR = 220
     }
 
-    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 3000)
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 6000)
     camera.position.set(lookTarget.x, lookTarget.y + 80, lookTarget.z + initCamR)
     camera.lookAt(lookTarget)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setSize(width, height)
-    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.outputColorSpace = THREE.SRGBColorSpace
     el.appendChild(renderer.domElement)
     renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;cursor:grab;'
 
     // ── 조명 ─────────────────────────────────────────────────
-    scene.add(new THREE.AmbientLight(0x1a2244, 0.8))
-    const mainLight = new THREE.DirectionalLight(0xfff4e8, 1.3)
+    scene.add(new THREE.AmbientLight(0x202a4a, 0.55))
+    const mainLight = new THREE.DirectionalLight(0xfff4e8, 1.6)
     mainLight.position.set(200, 180, 100)
     scene.add(mainLight)
-    const fillLight = new THREE.DirectionalLight(0x334488, 0.35)
+    const fillLight = new THREE.DirectionalLight(0x3344aa, 0.4)
     fillLight.position.set(-200, -100, -150)
     scene.add(fillLight)
 
-    // ── 배경 파티클 ──────────────────────────────────────────
-    const bgPos = new Float32Array(3000 * 3)
-    for (let i = 0; i < 3000; i++) {
-      bgPos[i * 3]     = (Math.random() - 0.5) * 2600
-      bgPos[i * 3 + 1] = (Math.random() - 0.5) * 2600
-      bgPos[i * 3 + 2] = (Math.random() - 0.5) * 2600
+    // ── 성운 배경 ────────────────────────────────────────────
+    const nebulaSpecs: [number, number, number, THREE.Vector3, number][] = [
+      [108, 70, 196, new THREE.Vector3(-900, 300, -1600), 2200],
+      [40, 150, 170, new THREE.Vector3(1100, -400, -1400), 2000],
+      [196, 70, 140, new THREE.Vector3(300, 700, -1900), 1700],
+    ]
+    nebulaSpecs.forEach(([r, g, b, pos, sc]) => {
+      const tex = makeNebulaTexture(r, g, b)
+      disposables.push(tex)
+      const mat = new THREE.SpriteMaterial({
+        map: tex, transparent: true, opacity: 0.12,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      })
+      const spr = new THREE.Sprite(mat)
+      spr.position.copy(pos)
+      spr.scale.setScalar(sc)
+      scene.add(spr)
+    })
+
+    // ── 별하늘 (색·크기 다양 + 밝은 별 레이어) ────────────────
+    function buildStars(count: number, spread: number, size: number, opacity: number, bright: boolean) {
+      const pos = new Float32Array(count * 3)
+      const col = new Float32Array(count * 3)
+      const tint = new THREE.Color()
+      for (let i = 0; i < count; i++) {
+        pos[i * 3] = (Math.random() - 0.5) * spread
+        pos[i * 3 + 1] = (Math.random() - 0.5) * spread
+        pos[i * 3 + 2] = (Math.random() - 0.5) * spread
+        const r = Math.random()
+        if (r < 0.7) tint.setRGB(1, 1, 1)                   // 백색
+        else if (r < 0.85) tint.setRGB(0.7, 0.8, 1)         // 청백색
+        else if (r < 0.95) tint.setRGB(1, 0.92, 0.7)        // 황색
+        else tint.setRGB(1, 0.72, 0.6)                      // 적색
+        const v = bright ? 1 : 0.6 + Math.random() * 0.4
+        col[i * 3] = tint.r * v
+        col[i * 3 + 1] = tint.g * v
+        col[i * 3 + 2] = tint.b * v
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      const mat = new THREE.PointsMaterial({
+        size, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity, depthWrite: false,
+      })
+      const pts = new THREE.Points(geo, mat)
+      scene.add(pts)
+      return mat
     }
-    const bgGeo = new THREE.BufferGeometry()
-    bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3))
-    scene.add(new THREE.Points(bgGeo, new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.6, sizeAttenuation: true,
-      transparent: true, opacity: 0.42, depthWrite: false,
-    })))
+    buildStars(4200, 3000, 0.7, 0.75, false)
+    const brightStarMat = buildStars(220, 2800, 2.1, 0.95, true)
 
     // ── 항성 (카테고리) ──────────────────────────────────────
     const glowTex = makeGlowTexture()
+    disposables.push(glowTex)
     const sunDatas: SunData[] = []
 
     visibleCats.forEach(cat => {
@@ -170,26 +429,20 @@ export function StarMapCanvas() {
       const color = new THREE.Color(cat.color)
       const noteCount = visibleNotes.filter(n => n.category_id === cat.id).length
 
-      // 항성 크기 (노트 수에 따라 약간 변동)
       const sunR = Math.max(5, 4 + noteCount * 0.25)
 
-      // 항성 본체 (자체 발광 - BasicMaterial)
       const sunMesh = new THREE.Mesh(
         new THREE.SphereGeometry(sunR, 24, 18),
         new THREE.MeshBasicMaterial({ color }),
       )
       sunMesh.position.copy(pos)
 
-      // 항성 코어 (더 밝은 흰색 중심)
       const coreMesh = new THREE.Mesh(
         new THREE.SphereGeometry(sunR * 0.55, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0xffffff }),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
       )
-      coreMesh.material.transparent = true
-      coreMesh.material.opacity = 0.35
       sunMesh.add(coreMesh)
 
-      // 근거리 글로우
       const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowTex, color,
         transparent: true, opacity: 0.9,
@@ -198,7 +451,6 @@ export function StarMapCanvas() {
       innerGlow.scale.setScalar(sunR * 5.5)
       sunMesh.add(innerGlow)
 
-      // 원거리 코로나 글로우
       const coronaGlowScale = sunR * 12
       const coronaGlow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowTex, color,
@@ -208,12 +460,10 @@ export function StarMapCanvas() {
       coronaGlow.scale.setScalar(coronaGlowScale)
       sunMesh.add(coronaGlow)
 
-      // 카테고리 이름 레이블
       const label = makeLabelSprite(cat.name, color)
       label.position.set(0, sunR + 6, 0)
       sunMesh.add(label)
 
-      // 은하 성운 배경 (항성 주변 확산 빛)
       const nebulaR = Math.max(55, 30 + noteCount * 9)
       const nebula = new THREE.Mesh(
         new THREE.SphereGeometry(nebulaR, 18, 18),
@@ -226,82 +476,124 @@ export function StarMapCanvas() {
       sunDatas.push({ mesh: sunMesh, glow: coronaGlow, glowBase: coronaGlowScale, phase: Math.random() * Math.PI * 2 })
     })
 
-    // ── 노트 행성 ────────────────────────────────────────────
+    // ── 노트 행성 (절차적 표면 텍스처) ───────────────────────
+    const texCache = new Map<string, THREE.Texture>()
+    const getTex = (kind: PlanetKind) => {
+      let t = texCache.get(kind.name)
+      if (!t) { t = makePlanetTexture(kind); texCache.set(kind.name, t); disposables.push(t) }
+      return t
+    }
+    const ringTex = makeRingTexture()
+    disposables.push(ringTex)
+
     const starMeshes: THREE.Mesh[] = []
     const orbits: OrbitData[] = []
     const noteIds: string[] = []
+    const spinners: THREE.Object3D[] = []
 
-    visibleNotes.forEach((note, i) => {
-      const catIdx = categories.findIndex(c => c.id === note.category_id)
-      const center = (catIdx >= 0
-        ? STAR_POSITIONS[catIdx % STAR_POSITIONS.length]
-        : new THREE.Vector3(0, 0, 0)
-      ).clone()
-      const catColor = catIdx >= 0
-        ? new THREE.Color(categories[catIdx].color)
-        : new THREE.Color(0x6688aa)
+    // 카테고리별로 노트를 묶어 같은 평면에서 동심원 궤도(태양계 형태)로 배치
+    let kindCounter = 0
+    visibleCats.forEach(cat => {
+      const ci = categories.findIndex(c => c.id === cat.id)
+      const center = STAR_POSITIONS[ci % STAR_POSITIONS.length].clone()
+      const catColor = new THREE.Color(cat.color)
+      const catNotes = visibleNotes.filter(n => n.category_id === cat.id)
+      if (catNotes.length === 0) return
 
-      // 행성 타입: 0=가스거성(큰링), 1=얼음거성(작은링), 2=암석행성(링없음)
-      const pType = i % 3
-      const pal = PLANET_PALETTES[i % PLANET_PALETTES.length]
-      const planetR = pType === 0 ? 3.8 : pType === 1 ? 3.2 : 2.5
+      const sunR = Math.max(5, 4 + catNotes.length * 0.25)
 
-      // 행성 본체 (MeshPhongMaterial → 조명/그림자 반응)
-      const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(planetR, 16, 12),
-        new THREE.MeshPhongMaterial({
-          color: new THREE.Color(pal.base),
-          emissive: catColor.clone().multiplyScalar(0.1),
-          shininess: 55,
-          specular: new THREE.Color(0x334455),
-        }),
+      // 이 항성계의 황도면(카테고리마다 다른 기울기로 전체가 평평해지지 않게)
+      const tiltX = 0.12 + (ci % 4) * 0.14
+      const tiltY = ci * 0.6
+      const planeM = new THREE.Matrix4().makeRotationFromEuler(
+        new THREE.Euler(tiltX, tiltY, 0),
       )
+      const e1 = new THREE.Vector3(1, 0, 0).applyMatrix4(planeM)
+      const e2 = new THREE.Vector3(0, 0, 1).applyMatrix4(planeM)
 
-      // 행성 링 (가스·얼음거성)
-      if (pType <= 1) {
-        const rMid = planetR + (pType === 0 ? 4.8 : 3.5)
-        const rTube = pType === 0 ? 0.72 : 0.42
-        const ring = new THREE.Mesh(
-          new THREE.TorusGeometry(rMid, rTube, 4, 44),
-          new THREE.MeshBasicMaterial({
-            color: new THREE.Color(pal.ring),
-            transparent: true, opacity: pType === 0 ? 0.78 : 0.58,
+      catNotes.forEach((note, j) => {
+        const kind = PLANET_KINDS[kindCounter % PLANET_KINDS.length]
+        kindCounter++
+        const planetR = kind.size
+
+        // 행성 본체: 텍스처 + 표준 재질(태양광 방향으로 낮/밤 위상)
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(planetR, 28, 20),
+          new THREE.MeshStandardMaterial({
+            map: getTex(kind),
+            roughness: 0.92,
+            metalness: 0.0,
+            emissive: catColor.clone().multiplyScalar(0.06),
           }),
         )
-        ring.rotation.x = 0.85 + (i % 5) * 0.12
-        ring.rotation.z = (i % 7) * 0.08
-        mesh.add(ring)
-      }
+        mesh.rotation.z = (j % 5) * 0.12 - 0.2 // 자전축 기울기
 
-      // 행성 대기 글로우 스프라이트
-      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glowTex, color: catColor,
-        transparent: true, opacity: 0.55,
-        depthWrite: false, blending: THREE.AdditiveBlending,
-      }))
-      sprite.scale.setScalar(planetR * 5.5)
-      mesh.add(sprite)
+        // 고리
+        if (kind.ring) {
+          const rInner = planetR * 1.4
+          const rOuter = planetR * (kind.ring === 'saturn' ? 2.3 : 1.9)
+          const ring = new THREE.Mesh(
+            makeRingGeometry(rInner, rOuter),
+            new THREE.MeshBasicMaterial({
+              map: ringTex, transparent: true,
+              opacity: kind.ring === 'saturn' ? 0.9 : 0.5,
+              side: THREE.DoubleSide, depthWrite: false,
+            }),
+          )
+          ring.rotation.x = kind.ring === 'saturn' ? Math.PI / 2 - 0.45 : 0.25
+          mesh.add(ring)
+        }
 
-      // 공전 파라미터 (항성 반경보다 충분히 큰 거리부터 시작)
-      const sunR = Math.max(5, 4 + visibleNotes.filter(n => n.category_id === note.category_id).length * 0.25)
-      const orbRadius = sunR + 20 + (i % visibleNotes.length) / visibleNotes.length * 60 + Math.random() * 15
-      const angle = (i * 2.399963) % (Math.PI * 2)  // 황금각 분산
-      const inclination = (Math.random() - 0.5) * Math.PI * 0.65
-      const speed = (0.0003 + Math.random() * 0.0006) * (Math.random() < 0.5 ? 1 : -1)
+        // 대기 림 글로우 (카테고리 색으로 은은하게 — 소속 단서)
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowTex, color: catColor,
+          transparent: true, opacity: 0.32,
+          depthWrite: false, blending: THREE.AdditiveBlending,
+        }))
+        sprite.scale.setScalar(planetR * 3.4)
+        mesh.add(sprite)
 
-      mesh.position.set(
-        center.x + orbRadius * Math.cos(angle),
-        center.y + orbRadius * Math.sin(angle) * Math.cos(inclination),
-        center.z + orbRadius * Math.sin(angle) * Math.sin(inclination),
-      )
+        // 동심원 궤도 반경 (안쪽부터 바깥쪽으로 일정 간격)
+        const radius = sunR + 16 + j * 12 + (j % 2) * 2.5
+        const angle = (j * 2.399963) % (Math.PI * 2) // 황금각으로 시작각 분산
 
-      scene.add(mesh)
-      starMeshes.push(mesh)
-      orbits.push({
-        center, radius: orbRadius, speed, angle, inclination,
-        selfRotY: 0.012 + Math.random() * 0.02,
+        // 케플러식: 안쪽일수록 빠르게, 모두 같은 방향(순행)으로 공전
+        const speed = 1.1 / Math.pow(radius, 1.5)
+
+        const p = center.clone()
+          .addScaledVector(e1, radius * Math.cos(angle))
+          .addScaledVector(e2, radius * Math.sin(angle))
+        mesh.position.copy(p)
+
+        // 희미한 궤도 선 (태양계 느낌 강화)
+        const segs = 96
+        const orbitPts: number[] = []
+        for (let s = 0; s <= segs; s++) {
+          const a = (s / segs) * Math.PI * 2
+          const op = center.clone()
+            .addScaledVector(e1, radius * Math.cos(a))
+            .addScaledVector(e2, radius * Math.sin(a))
+          orbitPts.push(op.x, op.y, op.z)
+        }
+        const orbitGeo = new THREE.BufferGeometry()
+        orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(orbitPts, 3))
+        const orbitLine = new THREE.Line(
+          orbitGeo,
+          new THREE.LineBasicMaterial({
+            color: catColor, transparent: true, opacity: 0.12, depthWrite: false,
+          }),
+        )
+        scene.add(orbitLine)
+
+        scene.add(mesh)
+        starMeshes.push(mesh)
+        spinners.push(mesh)
+        orbits.push({
+          center, radius, e1, e2, angle, speed,
+          selfRotY: 0.004 + (j % 4) * 0.004,
+        })
+        noteIds.push(note.id)
       })
-      noteIds.push(note.id)
     })
 
     // ── 카메라 컨트롤 ────────────────────────────────────────
@@ -384,7 +676,7 @@ export function StarMapCanvas() {
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
-      camR = Math.max(40, Math.min(1000, camR + e.deltaY * 0.5))
+      camR = Math.max(40, Math.min(1200, camR + e.deltaY * 0.5))
       updateCamera()
     }, { passive: false })
 
@@ -394,22 +686,21 @@ export function StarMapCanvas() {
       animId = requestAnimationFrame(animate)
       const t = Date.now() * 0.0012
 
-      // 항성 자전 + 코로나 맥동
+      // 밝은 별 반짝임
+      brightStarMat.opacity = 0.78 + Math.sin(t * 2.2) * 0.17
+
       sunDatas.forEach(s => {
         s.mesh.rotation.y += 0.003
         const pulse = 1 + Math.sin(t + s.phase) * 0.1
         s.glow.scale.setScalar(s.glowBase * pulse)
       })
 
-      // 행성 공전 + 자전
-      starMeshes.forEach((mesh, i) => {
+      spinners.forEach((mesh, i) => {
         const od = orbits[i]
         od.angle += od.speed
-        mesh.position.set(
-          od.center.x + od.radius * Math.cos(od.angle),
-          od.center.y + od.radius * Math.sin(od.angle) * Math.cos(od.inclination),
-          od.center.z + od.radius * Math.sin(od.angle) * Math.sin(od.inclination),
-        )
+        mesh.position.copy(od.center)
+          .addScaledVector(od.e1, od.radius * Math.cos(od.angle))
+          .addScaledVector(od.e2, od.radius * Math.sin(od.angle))
         mesh.rotation.y += od.selfRotY
       })
 
@@ -429,6 +720,7 @@ export function StarMapCanvas() {
     return () => {
       cancelAnimationFrame(animId)
       obs.disconnect()
+      disposables.forEach(d => d.dispose())
       renderer.dispose()
       try { el.removeChild(canvas) } catch { /* */ }
     }
@@ -439,7 +731,7 @@ export function StarMapCanvas() {
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div
         ref={containerRef}
-        style={{ width: '100%', height: '100%', background: '#020408', overflow: 'hidden' }}
+        style={{ width: '100%', height: '100%', background: '#02030a', overflow: 'hidden' }}
       />
 
       {tooltip && (
