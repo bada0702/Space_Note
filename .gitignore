@@ -9,3 +9,8 @@ backend/*.db
 vault/
 .run/
 *.log
+
+# 로컬 환경/런타임 산출물
+.env.local
+.backend.pid
+.antigravitycli/
