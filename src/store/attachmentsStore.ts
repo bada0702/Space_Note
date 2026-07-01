@@ -12,11 +12,15 @@ interface AttachmentsState {
   clear: () => void
 }
 
+let loadRequestId = 0
+
 export const useAttachmentsStore = create<AttachmentsState>((set) => ({
   items: [],
 
   load: async (noteId) => {
+    const requestId = ++loadRequestId
     const items = await attachmentsApi.list(noteId)
+    if (requestId !== loadRequestId) return
     set({ items })
   },
 
