@@ -19,7 +19,7 @@ export interface Note {
   modified_at: string
 }
 
-export type EditorTab = 'edit' | 'preview' | 'starmap'
+export type EditorTab = 'edit' | 'preview' | 'starmap' | 'satellite'
 export type Theme = 'dark' | 'light'
 
 export type AIModel =
@@ -73,5 +73,21 @@ export interface Entity {
   note_id: string
   name: string
   type: string
+  created_at: string
+}
+
+export type AttachmentType = 'file' | 'link' | 'memo'
+
+export interface Attachment {
+  id: string
+  note_id: string
+  type: AttachmentType
+  name: string
+  file_path: string | null
+  mime: string | null
+  size: number
+  url: string | null
+  text_content: string
+  sort_order: number
   created_at: string
 }
