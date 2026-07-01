@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from db import get_conn
 from models import SettingsPatch, ChatRequest
 from services import anthropic_client
+from services import attachments as attach_svc
 
 router = APIRouter()
 
@@ -48,21 +49,24 @@ def _build_system(req: ChatRequest) -> str:
                 (req.context_note_id,),
             ).fetchone()
             if row:
-                parts.append(f"[현재 노트] {row['title']}\n{row['content']}")
+                extra = attach_svc.indexable_context(conn, req.context_note_id)
+                parts.append(f"[현재 노트] {row['title']}\n{row['content']}{extra}")
 
         if req.use_rag:
             if req.context_category_id:
                 rows = conn.execute(
-                    "SELECT title, content FROM notes WHERE category_id = ? "
+                    "SELECT id, title, content FROM notes WHERE category_id = ? "
                     "ORDER BY modified_at DESC LIMIT 5",
                     (req.context_category_id,),
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT title, content FROM notes ORDER BY modified_at DESC LIMIT 5"
+                    "SELECT id, title, content FROM notes ORDER BY modified_at DESC LIMIT 5"
                 ).fetchall()
             ctx = "\n\n".join(
-                f"# {r['title']}\n{(r['content'] or '')[:1000]}" for r in rows
+                f"# {r['title']}\n{(r['content'] or '')[:1000]}"
+                f"{attach_svc.indexable_context(conn, r['id'])[:1000]}"
+                for r in rows
             )
             if ctx:
                 parts.append("[참고 노트]\n" + ctx)

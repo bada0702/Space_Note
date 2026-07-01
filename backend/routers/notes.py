@@ -25,9 +25,11 @@ def _row_to_note(row) -> dict:
 
 
 def _run_extraction(note_id: str, content: str) -> None:
-    """백그라운드: 엔티티 추출 후 저장 + analysis_status 갱신."""
+    """백그라운드: 노트 본문 + 위성 텍스트로 엔티티 추출 후 저장 + status 갱신."""
     try:
-        entities = anthropic_client.extract_entities(content)
+        with get_conn() as conn:
+            extra = attach_svc.indexable_context(conn, note_id)
+        entities = anthropic_client.extract_entities(content + extra)
         now = _now()
         with get_conn() as conn:
             conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))

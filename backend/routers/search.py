@@ -15,9 +15,13 @@ def search(q: str = ""):
     like = f"%{term}%"
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, content, category_id, modified_at FROM notes "
-            "WHERE title LIKE ? OR content LIKE ? ORDER BY modified_at DESC LIMIT 50",
-            (like, like),
+            "SELECT DISTINCT n.id AS id, n.title AS title, n.content AS content, "
+            "n.category_id AS category_id, n.modified_at AS modified_at "
+            "FROM notes n "
+            "LEFT JOIN attachments a ON a.note_id = n.id "
+            "WHERE n.title LIKE ? OR n.content LIKE ? OR a.text_content LIKE ? "
+            "ORDER BY n.modified_at DESC LIMIT 50",
+            (like, like, like),
         ).fetchall()
     return [
         {
