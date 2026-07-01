@@ -5,6 +5,7 @@ import type { EditorTab } from '../../types'
 const TABS: { id: EditorTab; label: string }[] = [
   { id: 'edit', label: '편집' },
   { id: 'preview', label: '미리보기' },
+  { id: 'satellite', label: '위성' },
   { id: 'starmap', label: '성도' },
 ]
 
