@@ -36,6 +36,19 @@ CREATE TABLE IF NOT EXISTS settings (
   google_api_key TEXT NOT NULL DEFAULT '',
   default_model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6'
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  file_path TEXT,
+  mime TEXT,
+  size INTEGER NOT NULL DEFAULT 0,
+  url TEXT,
+  text_content TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 """
 
 
