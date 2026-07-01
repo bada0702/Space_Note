@@ -9,6 +9,7 @@ from db import get_conn
 from models import NoteCreate, NotePatch
 from services import vault
 from services import anthropic_client
+from services import attachments as attach_svc
 
 router = APIRouter()
 
@@ -134,6 +135,13 @@ def delete_note(nid: str):
         row = conn.execute("SELECT title FROM notes WHERE id = ?", (nid,)).fetchone()
         if row is not None:
             vault.delete_md(row["title"])
+        # 위성(첨부) 파일 + 행 정리
+        att_rows = conn.execute(
+            "SELECT file_path FROM attachments WHERE note_id = ?", (nid,)
+        ).fetchall()
+        for a in att_rows:
+            attach_svc.delete_file(a["file_path"])
+        conn.execute("DELETE FROM attachments WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM notes WHERE id = ?", (nid,))
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
     return Response(status_code=204)
