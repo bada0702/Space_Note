@@ -459,8 +459,13 @@ export function StarMapCanvas() {
     )
     if (starMapFilter) {
       const ci = categories.findIndex(c => c.id === starMapFilter)
-      if (ci >= 0) lookTarget = starPositions[ci].clone()
-      initCamR = 220
+      if (ci >= 0) {
+        // 선택한 은하계를 화면 중앙에 두고, 은하 전체가 들어오도록 거리 조정
+        lookTarget = starPositions[ci].clone()
+        initCamR = Math.max(200, systemRadius(noteCounts[ci]) * 2.4)
+      } else {
+        initCamR = 220
+      }
     }
     const maxZoom = Math.max(1200, initCamR * 2)
 
