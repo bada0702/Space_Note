@@ -7,7 +7,8 @@ import type { AIModel } from '../../types'
 const MODEL_LABELS: Record<AIModel, string> = {
   'claude-sonnet-4-6':   'Claude Sonnet',
   'claude-haiku-4-5':    'Claude Haiku',
-  'gemini-2.0-flash':    'Gemini Flash',
+  'gemini-2.5-flash':    'Gemini Flash',
+  'gemini-2.0-flash':    'Gemini 2.0 Flash',
   'gpt-4o-mini':         'GPT-4o mini',
   'gpt-4o':              'GPT-4o',
 }

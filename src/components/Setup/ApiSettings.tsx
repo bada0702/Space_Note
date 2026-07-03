@@ -5,7 +5,7 @@ import type { AISettings } from '../../types'
 const MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6',   label: 'Claude Sonnet 4.6' },
   { value: 'claude-haiku-4-5',    label: 'Claude Haiku 4.5' },
-  { value: 'gemini-2.0-flash',    label: 'Gemini 2.0 Flash' },
+  { value: 'gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
   { value: 'gpt-4o-mini',         label: 'GPT-4o mini' },
   { value: 'gpt-4o',              label: 'GPT-4o' },
 ]
