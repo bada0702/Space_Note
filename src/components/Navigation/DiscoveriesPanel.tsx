@@ -21,14 +21,16 @@ export function DiscoveriesPanel() {
     loadDiscoveries(activeNote?.id)
   }, [activeNote?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 내용 있는 노트의 pending이 모두 풀릴 때까지 3초 간격 폴링 (최대 60초)
-  const pollUntilDone = async () => {
-    for (let i = 0; i < 20 && alive.current; i++) {
+  // 내용 있는 노트의 pending이 모두 풀릴 때까지 3초 간격 폴링 (최대 3분 —
+  // API 한도(429) 백오프 재시도 때문에 노트당 오래 걸릴 수 있음)
+  const pollUntilDone = async (): Promise<boolean> => {
+    for (let i = 0; i < 60 && alive.current; i++) {
       await new Promise(r => setTimeout(r, 3000))
       const list = await notesApi.list()
       const busy = list.some(n => n.analysis_status === 'pending' && n.word_count > 0)
-      if (!busy) return
+      if (!busy) return true
     }
+    return false
   }
 
   const runAnalyze = async (call: () => Promise<{ queued: number }>) => {
@@ -41,11 +43,21 @@ export function DiscoveriesPanel() {
         return
       }
       setNotice(`${queued}개 노트 분석 중...`)
-      await pollUntilDone()
+      const done = await pollUntilDone()
       if (!alive.current) return
       await fetchNotes()
       await loadDiscoveries(activeNote?.id)
-      setNotice('')
+      if (!done) {
+        setNotice('아직 분석이 진행 중입니다 — 잠시 후 새로고침을 눌러주세요')
+        return
+      }
+      const failed = useNotesStore.getState().notes
+        .filter(n => n.analysis_status === 'failed' && n.word_count > 0).length
+      setNotice(
+        failed > 0
+          ? `${failed}개 분석 실패 — API 요청 한도(429)일 수 있습니다. 1분 후 다시 시도하세요`
+          : '',
+      )
     } catch (e: any) {
       setNotice(
         String(e?.message).includes('API 400')

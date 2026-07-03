@@ -1,6 +1,7 @@
 """Google Gemini REST API 클라이언트 (httpx 사용, SDK 의존성 없음)."""
 import json
 import os
+import time
 from typing import Iterator
 
 import httpx
@@ -45,12 +46,22 @@ def extract_entities(content: str) -> list[dict]:
         raise ValueError("Google API 키가 설정되지 않았습니다")
     if not content.strip():
         return []
-    resp = httpx.post(
-        f"{_BASE}/{EXTRACT_MODEL}:generateContent",
-        params={"key": key},
-        json=_chat_payload("", [{"role": "user", "content": _EXTRACT_PROMPT + content}]),
-        timeout=60,
-    )
+    # 무료 등급 분당 한도(429) 대응: 지수 백오프로 최대 4회 재시도
+    delays = [0, 8, 16, 32]
+    resp = None
+    for i, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        resp = httpx.post(
+            f"{_BASE}/{EXTRACT_MODEL}:generateContent",
+            params={"key": key},
+            json=_chat_payload(
+                "", [{"role": "user", "content": _EXTRACT_PROMPT + content}]
+            ),
+            timeout=60,
+        )
+        if resp.status_code != 429:
+            break
     resp.raise_for_status()
     data = resp.json()
     text = "".join(
