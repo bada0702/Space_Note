@@ -41,6 +41,62 @@ const STAR_POSITIONS = [
   new THREE.Vector3(55, -85, 125),
 ]
 
+const SUN_VERT = /* glsl */ `
+varying vec3 vPos;
+void main() {
+  vPos = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+
+const SUN_FRAG = /* glsl */ `
+uniform vec3 uColor;
+uniform float uTime;
+varying vec3 vPos;
+float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float noise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+        mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+    mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+        mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+    f.z);
+}
+float fbm(vec3 p) {
+  float v = 0.0; float a = 0.5;
+  for (int k = 0; k < 4; k++) { v += a * noise(p); p *= 2.1; a *= 0.5; }
+  return v;
+}
+void main() {
+  vec3 p = normalize(vPos);
+  float n = fbm(p * 3.0 + vec3(uTime * 0.15, 0.0, uTime * 0.08));
+  n += 0.5 * fbm(p * 9.0 - vec3(0.0, uTime * 0.22, 0.0));
+  vec3 hot = vec3(1.0, 0.97, 0.88);
+  vec3 col = mix(uColor * 0.9, hot, smoothstep(0.4, 1.15, n));
+  col *= 1.2 + 0.7 * n; // 밝기를 1 이상으로 밀어 블룸을 유도
+  gl_FragColor = vec4(col, 1.0);
+}`
+
+const ATMO_VERT = /* glsl */ `
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  vNormal = normalize(normalMatrix * normal);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vView = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}`
+
+const ATMO_FRAG = /* glsl */ `
+uniform vec3 uColor;
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.5);
+  gl_FragColor = vec4(uColor, rim * 0.55);
+}`
+
 // 은하계(항성계)의 최대 궤도 반경: 궤도 배치 공식과 동일하게 유지할 것
 function systemRadius(noteCount: number): number {
   const sunR = Math.max(5, 4 + noteCount * 0.25)
@@ -230,8 +286,8 @@ const PLANET_KINDS: PlanetKind[] = [
 ]
 
 function makePlanetTexture(kind: PlanetKind): THREE.Texture {
-  const w = 512
-  const h = 256
+  const w = 1024
+  const h = 512
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
@@ -501,6 +557,7 @@ export function StarMapCanvas() {
     const glowTex = makeGlowTexture()
     disposables.push(glowTex)
     const sunDatas: SunData[] = []
+    const sunMaterials: THREE.ShaderMaterial[] = []
 
     visibleCats.forEach(cat => {
       const ci = categories.findIndex(c => c.id === cat.id)
@@ -510,17 +567,17 @@ export function StarMapCanvas() {
 
       const sunR = Math.max(5, 4 + noteCount * 0.25)
 
-      const sunMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(sunR, 24, 18),
-        new THREE.MeshBasicMaterial({ color }),
-      )
+      const sunMat = new THREE.ShaderMaterial({
+        vertexShader: SUN_VERT,
+        fragmentShader: SUN_FRAG,
+        uniforms: {
+          uColor: { value: color.clone() },
+          uTime: { value: Math.random() * 100 },
+        },
+      })
+      const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(sunR, 48, 32), sunMat)
       sunMesh.position.copy(pos)
-
-      const coreMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(sunR * 0.55, 16, 12),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }),
-      )
-      sunMesh.add(coreMesh)
+      sunMaterials.push(sunMat)
 
       const innerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: glowTex, color,
@@ -623,14 +680,20 @@ export function StarMapCanvas() {
           mesh.add(ring)
         }
 
-        // 대기 림 글로우 (카테고리 색으로 은은하게 — 소속 단서)
-        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-          map: glowTex, color: catColor,
-          transparent: true, opacity: 0.32,
-          depthWrite: false, blending: THREE.AdditiveBlending,
-        }))
-        sprite.scale.setScalar(planetR * 3.4)
-        mesh.add(sprite)
+        // 프레넬 대기 셸 (카테고리 색 가장자리 산란 — 소속 단서)
+        const atmo = new THREE.Mesh(
+          new THREE.SphereGeometry(planetR * 1.22, 28, 20),
+          new THREE.ShaderMaterial({
+            vertexShader: ATMO_VERT,
+            fragmentShader: ATMO_FRAG,
+            uniforms: { uColor: { value: catColor.clone() } },
+            transparent: true,
+            side: THREE.BackSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          }),
+        )
+        mesh.add(atmo)
 
         // 동심원 궤도 반경 (안쪽부터 바깥쪽으로 일정 간격)
         const radius = sunR + 16 + j * 12 + (j % 2) * 2.5
@@ -773,6 +836,7 @@ export function StarMapCanvas() {
         const pulse = 1 + Math.sin(t + s.phase) * 0.1
         s.glow.scale.setScalar(s.glowBase * pulse)
       })
+      sunMaterials.forEach(m => { m.uniforms.uTime.value += 0.016 })
 
       spinners.forEach((mesh, i) => {
         const od = orbits[i]
