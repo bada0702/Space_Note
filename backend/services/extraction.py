@@ -8,7 +8,12 @@ def has_api_key() -> bool:
 
 def extract_entities(content: str) -> list[dict]:
     if anthropic_client.has_api_key():
-        return anthropic_client.extract_entities(content)
+        try:
+            return anthropic_client.extract_entities(content)
+        except Exception:
+            # 잘못된 키(401 등)여도 Gemini 키가 있으면 이어서 시도
+            if not gemini_client.has_api_key():
+                raise
     if gemini_client.has_api_key():
         return gemini_client.extract_entities(content)
     raise ValueError("AI API 키가 설정되지 않았습니다")
