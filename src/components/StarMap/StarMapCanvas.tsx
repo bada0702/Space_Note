@@ -505,6 +505,8 @@ export function StarMapCanvas() {
       [108, 70, 196, new THREE.Vector3(-900, 300, -1600), 2200],
       [40, 150, 170, new THREE.Vector3(1100, -400, -1400), 2000],
       [196, 70, 140, new THREE.Vector3(300, 700, -1900), 1700],
+      [60, 90, 200, new THREE.Vector3(-400, -600, -2100), 2400],
+      [170, 120, 60, new THREE.Vector3(1500, 500, -2300), 1900],
     ]
     nebulaSpecs.forEach(([r, g, b, pos, sc]) => {
       const tex = makeNebulaTexture(r, g, b)
@@ -552,6 +554,63 @@ export function StarMapCanvas() {
     }
     buildStars(4200, 3000, 0.7, 0.75, false)
     const brightStarMat = buildStars(220, 2800, 2.1, 0.95, true)
+
+    // ── 은하수 밴드: 기울어진 원환에 밀집된 파티클 띠 ────────
+    function buildMilkyWay() {
+      const count = 9000
+      const pos = new Float32Array(count * 3)
+      const col = new Float32Array(count * 3)
+      const euler = new THREE.Euler(0.5, 0, 0.35)
+      const v = new THREE.Vector3()
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2
+        const r = 1500 + (Math.random() - 0.5) * 700
+        const spread = Math.pow(Math.random(), 2) * 260 * (Math.random() < 0.5 ? 1 : -1)
+        v.set(Math.cos(a) * r, spread, Math.sin(a) * r).applyEuler(euler)
+        pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z
+        const w = 0.45 + Math.random() * 0.55
+        col[i * 3] = 0.82 * w; col[i * 3 + 1] = 0.86 * w; col[i * 3 + 2] = w
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      const mat = new THREE.PointsMaterial({
+        size: 1.6, sizeAttenuation: true, vertexColors: true, map: starTex,
+        transparent: true, opacity: 0.35, depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+      scene.add(new THREE.Points(geo, mat))
+    }
+    buildMilkyWay()
+
+    // ── 항성 주위 나선팔 성간먼지 ────────────────────────────
+    function buildSpiralDust(center: THREE.Vector3, color: THREE.Color, maxR: number) {
+      const count = 500
+      const pos = new Float32Array(count * 3)
+      const col = new Float32Array(count * 3)
+      const white = new THREE.Color(1, 1, 1)
+      const tmp = new THREE.Color()
+      for (let i = 0; i < count; i++) {
+        const t = Math.random()
+        const arm = Math.random() < 0.5 ? 0 : Math.PI
+        const a = arm + t * Math.PI * 3.2 + (Math.random() - 0.5) * 0.5
+        const r = 8 + t * maxR
+        pos[i * 3] = center.x + Math.cos(a) * r
+        pos[i * 3 + 1] = center.y + (Math.random() - 0.5) * 6
+        pos[i * 3 + 2] = center.z + Math.sin(a) * r
+        tmp.copy(color).lerp(white, t * 0.6)
+        col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      const mat = new THREE.PointsMaterial({
+        size: 1.1, sizeAttenuation: true, vertexColors: true, map: starTex,
+        transparent: true, opacity: 0.3, depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+      scene.add(new THREE.Points(geo, mat))
+    }
 
     // ── 항성 (카테고리) ──────────────────────────────────────
     const glowTex = makeGlowTexture()
@@ -610,6 +669,7 @@ export function StarMapCanvas() {
 
       scene.add(sunMesh)
       sunDatas.push({ mesh: sunMesh, glow: coronaGlow, glowBase: coronaGlowScale, phase: Math.random() * Math.PI * 2 })
+      buildSpiralDust(pos, color, systemRadius(noteCount))
     })
 
     // ── 노트 행성 (절차적 표면 텍스처) ───────────────────────
@@ -719,10 +779,17 @@ export function StarMapCanvas() {
         }
         const orbitGeo = new THREE.BufferGeometry()
         orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(orbitPts, 3))
+        const orbitCols: number[] = []
+        for (let s = 0; s <= segs; s++) {
+          const fade = 0.25 + 0.75 * Math.abs(Math.sin((s / segs) * Math.PI * 2))
+          orbitCols.push(catColor.r * fade, catColor.g * fade, catColor.b * fade)
+        }
+        orbitGeo.setAttribute('color', new THREE.Float32BufferAttribute(orbitCols, 3))
         const orbitLine = new THREE.Line(
           orbitGeo,
           new THREE.LineBasicMaterial({
-            color: catColor, transparent: true, opacity: 0.12, depthWrite: false,
+            vertexColors: true, transparent: true, opacity: 0.18,
+            depthWrite: false, blending: THREE.AdditiveBlending,
           }),
         )
         scene.add(orbitLine)
