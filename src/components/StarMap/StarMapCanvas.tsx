@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
 
@@ -278,6 +281,22 @@ function makeRingGeometry(inner: number, outer: number): THREE.RingGeometry {
   return g
 }
 
+// 작은 원형 소프트 파티클 (별 포인트용 — 사각형 픽셀 제거)
+function makeStarSpriteTexture(): THREE.Texture {
+  const s = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = s
+  canvas.height = s
+  const ctx = canvas.getContext('2d')!
+  const grad = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2)
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.7)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, s, s)
+  return new THREE.CanvasTexture(canvas)
+}
+
 function makeGlowTexture(): THREE.Texture {
   const size = 256
   const canvas = document.createElement('canvas')
@@ -397,8 +416,24 @@ export function StarMapCanvas() {
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.15
     el.appendChild(renderer.domElement)
     renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;cursor:grab;'
+
+    // ── 포스트프로세싱 (블룸) ────────────────────────────────
+    const composer = new EffectComposer(renderer)
+    composer.addPass(new RenderPass(scene, camera))
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(width / 2, height / 2), // 절반 해상도
+      0.85,  // strength
+      0.6,   // radius
+      0.78,  // threshold — 항성/밝은 별만 빛나게
+    )
+    composer.addPass(bloom)
+
+    const starTex = makeStarSpriteTexture()
+    disposables.push(starTex)
 
     // ── 조명 ─────────────────────────────────────────────────
     scene.add(new THREE.AmbientLight(0x202a4a, 0.55))
@@ -452,7 +487,8 @@ export function StarMapCanvas() {
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
       const mat = new THREE.PointsMaterial({
         size, sizeAttenuation: true, vertexColors: true,
-        transparent: true, opacity, depthWrite: false,
+        map: starTex, transparent: true, opacity,
+        depthWrite: false, blending: THREE.AdditiveBlending,
       })
       const pts = new THREE.Points(geo, mat)
       scene.add(pts)
@@ -747,7 +783,7 @@ export function StarMapCanvas() {
         mesh.rotation.y += od.selfRotY
       })
 
-      renderer.render(scene, camera)
+      composer.render()
     }
     animate()
 
@@ -755,6 +791,7 @@ export function StarMapCanvas() {
       const w = el.clientWidth
       const h = el.clientHeight
       renderer.setSize(w, h)
+      composer.setSize(w, h)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
     })
@@ -764,6 +801,7 @@ export function StarMapCanvas() {
       cancelAnimationFrame(animId)
       obs.disconnect()
       disposables.forEach(d => d.dispose())
+      composer.dispose()
       renderer.dispose()
       try { el.removeChild(canvas) } catch { /* */ }
     }
