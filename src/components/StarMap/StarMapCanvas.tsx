@@ -38,6 +38,40 @@ const STAR_POSITIONS = [
   new THREE.Vector3(55, -85, 125),
 ]
 
+// 은하계(항성계)의 최대 궤도 반경: 궤도 배치 공식과 동일하게 유지할 것
+function systemRadius(noteCount: number): number {
+  const sunR = Math.max(5, 4 + noteCount * 0.25)
+  return noteCount > 0 ? sunR + 16 + (noteCount - 1) * 12 : 60
+}
+
+// 항성 위치를 동적으로 계산: 모든 쌍이 R_i + R_j + MARGIN 이상 떨어지도록
+// 기존 STAR_POSITIONS의 방향만 쓰고 거리를 늘려가며 배치한다.
+function computeStarPositions(counts: number[]): THREE.Vector3[] {
+  const MARGIN = 120
+  const radii = counts.map(systemRadius)
+  const out: THREE.Vector3[] = []
+  for (let i = 0; i < counts.length; i++) {
+    if (i === 0) { out.push(new THREE.Vector3(0, 0, 0)); continue }
+    const base = STAR_POSITIONS[i % STAR_POSITIONS.length]
+    const dir = base.lengthSq() > 0
+      ? base.clone().normalize()
+      : new THREE.Vector3(Math.sin(i * 2.4), Math.sin(i * 1.7) * 0.5, Math.cos(i * 2.4)).normalize()
+    let d = radii[i] + radii[0] + MARGIN
+    let placed = dir.clone().multiplyScalar(d)
+    for (let guard = 0; guard < 400; guard++) {
+      let ok = true
+      for (let j = 0; j < i; j++) {
+        if (placed.distanceTo(out[j]) < radii[i] + radii[j] + MARGIN) { ok = false; break }
+      }
+      if (ok) break
+      d += 60
+      placed = dir.clone().multiplyScalar(d)
+    }
+    out.push(placed)
+  }
+  return out
+}
+
 // ── 색 유틸 ──────────────────────────────────────────────────
 const clamp255 = (v: number) => Math.max(0, Math.min(255, v | 0))
 function rgb(r: number, g: number, b: number, a = 1) {
@@ -332,6 +366,11 @@ export function StarMapCanvas() {
       ? categories.filter(c => c.id === starMapFilter)
       : categories
 
+    // 은하 간 간격이 보장되도록 항성 위치를 동적으로 계산 (필터와 무관하게
+    // 전체 카테고리 기준으로 계산해 위치가 흔들리지 않게 유지)
+    const noteCounts = categories.map(c => notes.filter(n => n.category_id === c.id).length)
+    const starPositions = computeStarPositions(noteCounts)
+
     // ── Scene ────────────────────────────────────────────────
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x02030a)
@@ -339,12 +378,16 @@ export function StarMapCanvas() {
 
     // 카메라 초점 (필터 시 해당 항성 위치)
     let lookTarget = new THREE.Vector3(0, 0, 0)
-    let initCamR = 400
+    let initCamR = Math.max(
+      400,
+      starPositions.reduce((m, p) => Math.max(m, p.length()), 0) * 1.6,
+    )
     if (starMapFilter) {
       const ci = categories.findIndex(c => c.id === starMapFilter)
-      if (ci >= 0) lookTarget = STAR_POSITIONS[ci % STAR_POSITIONS.length].clone()
+      if (ci >= 0) lookTarget = starPositions[ci].clone()
       initCamR = 220
     }
+    const maxZoom = Math.max(1200, initCamR * 2)
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 6000)
     camera.position.set(lookTarget.x, lookTarget.y + 80, lookTarget.z + initCamR)
@@ -425,7 +468,7 @@ export function StarMapCanvas() {
 
     visibleCats.forEach(cat => {
       const ci = categories.findIndex(c => c.id === cat.id)
-      const pos = STAR_POSITIONS[ci % STAR_POSITIONS.length]
+      const pos = starPositions[ci]
       const color = new THREE.Color(cat.color)
       const noteCount = visibleNotes.filter(n => n.category_id === cat.id).length
 
@@ -495,7 +538,7 @@ export function StarMapCanvas() {
     let kindCounter = 0
     visibleCats.forEach(cat => {
       const ci = categories.findIndex(c => c.id === cat.id)
-      const center = STAR_POSITIONS[ci % STAR_POSITIONS.length].clone()
+      const center = starPositions[ci].clone()
       const catColor = new THREE.Color(cat.color)
       const catNotes = visibleNotes.filter(n => n.category_id === cat.id)
       if (catNotes.length === 0) return
@@ -676,7 +719,7 @@ export function StarMapCanvas() {
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
-      camR = Math.max(40, Math.min(1200, camR + e.deltaY * 0.5))
+      camR = Math.max(40, Math.min(maxZoom, camR + e.deltaY * 0.5))
       updateCamera()
     }, { passive: false })
 
