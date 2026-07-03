@@ -43,9 +43,15 @@ def parse_entities(text: str) -> list[dict]:
     return out
 
 
+def has_api_key() -> bool:
+    return bool(_api_key())
+
+
 def extract_entities(content: str) -> list[dict]:
     key = _api_key()
-    if not key or not content.strip():
+    if not key:
+        raise ValueError("Anthropic API 키가 설정되지 않았습니다")
+    if not content.strip():
         return []
     client = Anthropic(api_key=key)
     msg = client.messages.create(
