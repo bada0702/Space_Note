@@ -72,18 +72,36 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
 
 export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCreateNote }: Props) {
   const [open, setOpen] = useState(true)
+  const { setTab, setStarMapFilter } = useNotesStore()
+
+  const showInStarMap = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setStarMapFilter(category.id)
+    setTab('starmap')
+  }
 
   return (
     <div className="mb-1">
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         className="w-full flex items-center gap-1.5 px-3 py-1"
-        style={{ color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase' }}
+        style={{ color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer' }}
         onClick={() => setOpen(o => !o)}
+        onKeyDown={e => e.key === 'Enter' && setOpen(o => !o)}
       >
         <span style={{ color: category.color, fontSize: '8px' }}>●</span>
         <span>{category.name}</span>
-        <span className="ml-auto" style={{ fontSize: '9px' }}>{open ? '▾' : '▸'}</span>
-      </button>
+        <button
+          title="성도에서 이 은하 보기"
+          onClick={showInStarMap}
+          className="ml-auto"
+          style={{ fontSize: '10px', color: category.color, padding: '0 2px', lineHeight: 1 }}
+        >
+          ✦
+        </button>
+        <span style={{ fontSize: '9px' }}>{open ? '▾' : '▸'}</span>
+      </div>
 
       {open && (
         <ul>

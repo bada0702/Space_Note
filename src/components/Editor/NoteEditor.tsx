@@ -3,7 +3,7 @@ import type * as monaco from 'monaco-editor'
 import { useNotesStore } from '../../store/notesStore'
 import { useTheme } from '../Layout/ThemeProvider'
 import { useRef, useCallback, useState, useEffect } from 'react'
-import { FormatToolbar } from './FormatToolbar'
+import { FormatToolbar, uploadAndInsert } from './FormatToolbar'
 
 export function NoteEditor() {
   const { activeNote, saveNote, renameNote } = useNotesStore()
@@ -89,8 +89,24 @@ export function NoteEditor() {
       />
       {/* 서식 툴바 */}
       <FormatToolbar editorRef={editorRef} />
-      {/* 본문 에디터 */}
-      <div className="flex-1 overflow-hidden">
+      {/* 본문 에디터 (파일 드래그앤드롭/붙여넣기로 첨부 업로드) */}
+      <div
+        className="flex-1 overflow-hidden"
+        onDragOver={e => {
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault()
+        }}
+        onDrop={e => {
+          if (!e.dataTransfer.files.length || !editorRef.current) return
+          e.preventDefault()
+          uploadAndInsert(editorRef.current, e.dataTransfer.files)
+        }}
+        onPaste={e => {
+          if (!e.clipboardData.files.length || !editorRef.current) return
+          e.preventDefault()
+          e.stopPropagation()
+          uploadAndInsert(editorRef.current, e.clipboardData.files)
+        }}
+      >
         <Editor
           height="100%"
           defaultLanguage="markdown"

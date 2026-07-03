@@ -451,11 +451,18 @@ export function StarMapCanvas() {
     scene.background = new THREE.Color(0x02030a)
     scene.fog = new THREE.FogExp2(0x02030a, 0.0004)
 
-    // 카메라 초점 (필터 시 해당 항성 위치)
+    // 카메라 초점: 전체 뷰는 모든 은하의 중심점(특정 은하에 치우치지 않게)
     let lookTarget = new THREE.Vector3(0, 0, 0)
+    if (starPositions.length > 0) {
+      starPositions.forEach(p => lookTarget.add(p))
+      lookTarget.divideScalar(starPositions.length)
+    }
     let initCamR = Math.max(
       400,
-      starPositions.reduce((m, p) => Math.max(m, p.length()), 0) * 1.6,
+      starPositions.reduce(
+        (m, p, i) => Math.max(m, p.distanceTo(lookTarget) + systemRadius(noteCounts[i])),
+        0,
+      ) * 1.7,
     )
     if (starMapFilter) {
       const ci = categories.findIndex(c => c.id === starMapFilter)

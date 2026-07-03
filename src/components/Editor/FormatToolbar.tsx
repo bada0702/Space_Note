@@ -1,5 +1,40 @@
 import type * as monaco from 'monaco-editor'
 import { useNotesStore } from '../../store/notesStore'
+import { attachmentMarkdown, uploadAttachment } from '../../api/attachmentsApi'
+
+/** 커서 위치(또는 선택 영역)에 텍스트 삽입 */
+export function insertAtCursor(editor: monaco.editor.IStandaloneCodeEditor, text: string) {
+  const selection = editor.getSelection()
+  if (!selection) return
+  editor.executeEdits('attach', [{ range: selection, text }])
+  editor.focus()
+}
+
+/** 파일들을 업로드하고 각각 마크다운 링크로 삽입 */
+export async function uploadAndInsert(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  files: Iterable<File>,
+) {
+  for (const file of files) {
+    try {
+      const uploaded = await uploadAttachment(file)
+      insertAtCursor(editor, `${attachmentMarkdown(uploaded)}\n`)
+    } catch (e) {
+      console.error('attachment upload failed:', e)
+      insertAtCursor(editor, `<!-- 업로드 실패: ${file.name} -->\n`)
+    }
+  }
+}
+
+function pickAndUpload(editor: monaco.editor.IStandaloneCodeEditor) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  input.onchange = () => {
+    if (input.files?.length) uploadAndInsert(editor, input.files)
+  }
+  input.click()
+}
 
 interface Props {
   editorRef: React.MutableRefObject<monaco.editor.IStandaloneCodeEditor | null>
@@ -156,6 +191,7 @@ const GROUPS: ToolBtn[][] = [
     { label: '>',    title: '인용구',       action: e => applyLinePrefix(e, '> ') },
     { label: '---',  title: '수평선',       action: e => insertHRule(e) },
     { label: 'URL',  title: '링크 삽입',    action: e => insertLink(e) },
+    { label: '📎',   title: '파일 첨부',    action: e => pickAndUpload(e) },
   ],
   [
     { label: '≡L', title: '왼쪽 정렬',    action: e => applyAlignment(e, 'left') },
