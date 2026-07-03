@@ -1,16 +1,61 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchStore } from '../../store/searchStore'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
+import { notesApi } from '../../api/notesApi'
 
 export function DiscoveriesPanel() {
   const { discoveries, loading, loadDiscoveries, setPanel } = useSearchStore()
-  const { activeNote, openNote, setTab } = useNotesStore()
+  const { activeNote, openNote, setTab, fetchNotes } = useNotesStore()
   const { categories } = useCategoriesStore()
+  const [analyzing, setAnalyzing] = useState(false)
+  const [notice, setNotice] = useState('')
+  const alive = useRef(true)
+
+  useEffect(() => {
+    alive.current = true
+    return () => { alive.current = false }
+  }, [])
 
   useEffect(() => {
     loadDiscoveries(activeNote?.id)
   }, [activeNote?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 내용 있는 노트의 pending이 모두 풀릴 때까지 3초 간격 폴링 (최대 60초)
+  const pollUntilDone = async () => {
+    for (let i = 0; i < 20 && alive.current; i++) {
+      await new Promise(r => setTimeout(r, 3000))
+      const list = await notesApi.list()
+      const busy = list.some(n => n.analysis_status === 'pending' && n.word_count > 0)
+      if (!busy) return
+    }
+  }
+
+  const runAnalyze = async (call: () => Promise<{ queued: number }>) => {
+    setNotice('')
+    setAnalyzing(true)
+    try {
+      const { queued } = await call()
+      if (queued === 0) {
+        setNotice('분석할 노트가 없습니다')
+        return
+      }
+      setNotice(`${queued}개 노트 분석 중...`)
+      await pollUntilDone()
+      if (!alive.current) return
+      await fetchNotes()
+      await loadDiscoveries(activeNote?.id)
+      setNotice('')
+    } catch (e: any) {
+      setNotice(
+        String(e?.message).includes('API 400')
+          ? '설정에서 Anthropic API 키를 먼저 저장하세요'
+          : '분석 요청에 실패했습니다',
+      )
+    } finally {
+      if (alive.current) setAnalyzing(false)
+    }
+  }
 
   const catColor = (id: string | null) =>
     categories.find(c => c.id === id)?.color ?? '#666677'
@@ -32,18 +77,52 @@ export function DiscoveriesPanel() {
         </div>
       </div>
 
-      {/* 새로고침 */}
+      {/* 분석/새로고침 */}
       <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <button
-          onClick={() => loadDiscoveries(activeNote?.id)}
-          style={{
-            fontSize: 11, color: 'var(--text-secondary)',
-            background: 'var(--bg-input)', border: '1px solid var(--border)',
-            borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
-          }}
-        >
-          ↺ 새로고침
-        </button>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => runAnalyze(() => notesApi.analyzeAll())}
+            disabled={analyzing}
+            style={{
+              fontSize: 11, color: 'var(--text-primary)',
+              background: 'var(--bg-input)', border: '1px solid var(--accent-line)',
+              borderRadius: 4, padding: '3px 10px',
+              cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
+            }}
+          >
+            ⟡ 전체 항로 분석
+          </button>
+          {activeNote && (
+            <button
+              onClick={() => runAnalyze(() => notesApi.analyzeOne(activeNote.id))}
+              disabled={analyzing}
+              style={{
+                fontSize: 11, color: 'var(--text-secondary)',
+                background: 'var(--bg-input)', border: '1px solid var(--border)',
+                borderRadius: 4, padding: '3px 10px',
+                cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
+              }}
+            >
+              이 노트 분석
+            </button>
+          )}
+          <button
+            onClick={() => loadDiscoveries(activeNote?.id)}
+            disabled={analyzing}
+            style={{
+              fontSize: 11, color: 'var(--text-secondary)',
+              background: 'var(--bg-input)', border: '1px solid var(--border)',
+              borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
+            }}
+          >
+            ↺ 새로고침
+          </button>
+        </div>
+        {notice && (
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent-line)' }}>
+            {notice}
+          </div>
+        )}
       </div>
 
       {/* 연결 목록 */}

@@ -13,4 +13,8 @@ export const notesApi = {
   update: (id: string, patch: { title?: string; content?: string; category_id?: string | null; tags?: string[] }) =>
     apiFetch<Note>(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   delete: (id: string) => apiFetch<void>(`/notes/${id}`, { method: 'DELETE' }),
+  analyzeAll: () =>
+    apiFetch<{ queued: number }>('/notes/analyze', { method: 'POST' }),
+  analyzeOne: (id: string) =>
+    apiFetch<{ queued: number }>(`/notes/${id}/analyze`, { method: 'POST' }),
 }
