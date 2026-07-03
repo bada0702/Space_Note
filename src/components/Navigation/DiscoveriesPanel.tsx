@@ -49,7 +49,7 @@ export function DiscoveriesPanel() {
     } catch (e: any) {
       setNotice(
         String(e?.message).includes('API 400')
-          ? '설정에서 Anthropic API 키를 먼저 저장하세요'
+          ? '설정에서 API 키를 먼저 저장하세요 (Anthropic 또는 Gemini)'
           : '분석 요청에 실패했습니다',
       )
     } finally {

@@ -15,9 +15,9 @@ def test_analyze_all_without_key_returns_400(client):
 
 def test_analyze_all_queues_failed_and_pending_notes(client, monkeypatch):
     from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.anthropic_client, "has_api_key", lambda: True)
+    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
     monkeypatch.setattr(
-        notes_router.anthropic_client, "extract_entities",
+        notes_router.extraction, "extract_entities",
         lambda content: [{"name": "Claude", "type": "개념"}],
     )
     n1 = _make_note(client, "a")          # 생성 시 추출 성공 → analyzed
@@ -42,9 +42,9 @@ def test_analyze_all_queues_failed_and_pending_notes(client, monkeypatch):
 
 def test_analyze_one(client, monkeypatch):
     from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.anthropic_client, "has_api_key", lambda: True)
+    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
     monkeypatch.setattr(
-        notes_router.anthropic_client, "extract_entities",
+        notes_router.extraction, "extract_entities",
         lambda content: [{"name": "우주", "type": "개념"}],
     )
     n = _make_note(client)
@@ -57,6 +57,6 @@ def test_analyze_one(client, monkeypatch):
 
 def test_analyze_one_missing_note_404(client, monkeypatch):
     from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.anthropic_client, "has_api_key", lambda: True)
+    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
     r = client.post("/notes/does-not-exist/analyze", headers=AUTH)
     assert r.status_code == 404

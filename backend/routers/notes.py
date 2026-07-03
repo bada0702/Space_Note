@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from db import get_conn
 from models import NoteCreate, NotePatch
 from services import vault
-from services import anthropic_client
+from services import extraction
 
 router = APIRouter()
 
@@ -26,7 +26,7 @@ def _row_to_note(row) -> dict:
 def _run_extraction(note_id: str, content: str) -> None:
     """백그라운드: 엔티티 추출 후 저장 + analysis_status 갱신."""
     try:
-        entities = anthropic_client.extract_entities(content)
+        entities = extraction.extract_entities(content)
         now = _now()
         with get_conn() as conn:
             conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))
@@ -62,9 +62,10 @@ def list_notes(category_id: Optional[str] = None):
 
 
 def _require_api_key() -> None:
-    if not anthropic_client.has_api_key():
+    if not extraction.has_api_key():
         raise HTTPException(
-            status_code=400, detail="Anthropic API 키가 설정되지 않았습니다"
+            status_code=400,
+            detail="AI API 키가 설정되지 않았습니다 (설정에서 Anthropic 또는 Google 키를 저장하세요)",
         )
 
 

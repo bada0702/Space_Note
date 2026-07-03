@@ -13,20 +13,32 @@ const MODEL_OPTIONS = [
 export function ApiSettings({ onClose }: { onClose: () => void }) {
   const { loadSettings, saveSettings } = useAIStore()
   const [form, setForm] = useState<Partial<AISettings>>({})
+  const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+
+  const refreshSavedKeys = () => {
+    const s = useAIStore.getState().settings
+    if (!s) return
+    setSavedKeys({
+      anthropic_api_key: !!s.anthropic_api_key,
+      openai_api_key: !!s.openai_api_key,
+      google_api_key: !!s.google_api_key,
+    })
+  }
 
   useEffect(() => {
     loadSettings().then(() => {
       const s = useAIStore.getState().settings
       if (s) {
-        // API 키는 빈칸으로 (마스킹된 값을 폼에 넣지 않음)
+        // API 키는 빈칸으로 (저장된 값을 폼에 노출하지 않음)
         setForm({
           anthropic_api_key: '',
           openai_api_key: '',
           google_api_key: '',
           default_model: s.default_model,
         })
+        refreshSavedKeys()
       }
     })
   }, [])
@@ -37,18 +49,27 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // "****"로 시작하는 마스킹된 값은 전송하지 않음
+      // 빈칸/마스킹된 키 필드는 전송하지 않음 — 저장된 키를 덮어쓰지 않게
       const patch: Partial<AISettings> = {}
       for (const [k, v] of Object.entries(form)) {
-        if (v !== undefined && !String(v).startsWith('****')) {
-          (patch as Record<string, string>)[k] = v
-        }
+        if (v === undefined) continue
+        const s = String(v)
+        if (k.endsWith('_api_key') && (s === '' || s.startsWith('****'))) continue
+        ;(patch as Record<string, string>)[k] = s
       }
       await saveSettings(patch)
+      await loadSettings()
+      refreshSavedKeys()
+      setForm(f => ({
+        ...f,
+        anthropic_api_key: '',
+        openai_api_key: '',
+        google_api_key: '',
+      }))
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
-    } catch {
-      // 저장 실패 시 무시
+    } catch (e) {
+      console.error('settings save failed:', e)
     } finally {
       setSaving(false)
     }
@@ -100,11 +121,18 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
             { key: 'google_api_key'    as const, label: 'Google API Key (Gemini)',    placeholder: 'AIza...' },
           ].map(({ key, label, placeholder }) => (
             <div key={key}>
-              <label htmlFor={key} style={labelStyle}>{label}</label>
+              <label htmlFor={key} style={labelStyle}>
+                {label}
+                {savedKeys[key] && (
+                  <span style={{ color: '#2f9e44', marginLeft: 6, textTransform: 'none' }}>
+                    ✓ 저장됨
+                  </span>
+                )}
+              </label>
               <input
                 id={key}
                 type="password"
-                placeholder={placeholder}
+                placeholder={savedKeys[key] ? '저장된 키 유지 (변경할 때만 입력)' : placeholder}
                 value={form[key] ?? ''}
                 onChange={e => setField(key, e.target.value)}
                 style={inputStyle}

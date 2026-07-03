@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from db import get_conn
 from models import SettingsPatch, ChatRequest
-from services import anthropic_client
+from services import anthropic_client, gemini_client
 
 router = APIRouter()
 
@@ -83,9 +83,12 @@ def chat(req: ChatRequest):
     system = _build_system(req)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
+    # 모델 이름으로 제공자 선택 (gemini-* → Google, 그 외 → Anthropic)
+    client = gemini_client if req.model.startswith("gemini") else anthropic_client
+
     def gen():
         try:
-            for text in anthropic_client.stream_chat(req.model, system, messages):
+            for text in client.stream_chat(req.model, system, messages):
                 yield f"data: {json.dumps({'text': text})}\n"
             yield "data: [DONE]\n"
         except Exception as e:  # noqa: BLE001 - 스트림 중 오류를 클라이언트로 전달
