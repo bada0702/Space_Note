@@ -75,3 +75,29 @@ body {
   0%, 100% { opacity: 0.3; transform: scale(0.85); }
   50%       { opacity: 1;   transform: scale(1.15); }
 }
+
+/* 커스텀 스크롤바 — 배경에 녹아드는 얇은 반투명 썸 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 140, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 140, 0.3);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 140, 0.5);
+}
+.dark *::-webkit-scrollbar-thumb {
+  background: rgba(160, 170, 200, 0.18);
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 170, 200, 0.32);
+}
