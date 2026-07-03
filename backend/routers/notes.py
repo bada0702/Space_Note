@@ -61,6 +61,50 @@ def list_notes(category_id: Optional[str] = None):
     return [_row_to_note(r) for r in rows]
 
 
+def _require_api_key() -> None:
+    if not anthropic_client.has_api_key():
+        raise HTTPException(
+            status_code=400, detail="Anthropic API 키가 설정되지 않았습니다"
+        )
+
+
+@router.post("/notes/analyze")
+def analyze_all(bg: BackgroundTasks):
+    """내용이 있는 pending/failed 노트 전체를 백그라운드로 재분석."""
+    _require_api_key()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, content FROM notes "
+            "WHERE TRIM(COALESCE(content, '')) != '' "
+            "AND analysis_status IN ('pending', 'failed')"
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE notes SET analysis_status = 'pending' WHERE id = ?",
+                (r["id"],),
+            )
+    for r in rows:
+        bg.add_task(_run_extraction, r["id"], r["content"])
+    return {"queued": len(rows)}
+
+
+@router.post("/notes/{nid}/analyze")
+def analyze_one(nid: str, bg: BackgroundTasks):
+    _require_api_key()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, content FROM notes WHERE id = ?", (nid,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE notes SET analysis_status = 'pending' WHERE id = ?", (nid,)
+        )
+    bg.add_task(_run_extraction, nid, row["content"] or "")
+    return {"queued": 1}
+
+
 @router.post("/notes")
 def create_note(body: NoteCreate, bg: BackgroundTasks):
     nid = str(uuid.uuid4())
