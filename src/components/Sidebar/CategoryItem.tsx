@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Category, Note } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
+import { useCategoriesStore } from '../../store/categoriesStore'
 
 interface Props {
   category: Category
@@ -72,12 +73,33 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
 
 export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCreateNote }: Props) {
   const [open, setOpen] = useState(true)
+  const [hovered, setHovered] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [nameValue, setNameValue] = useState(category.name)
   const { setTab, setStarMapFilter } = useNotesStore()
+  const { updateCategory } = useCategoriesStore()
 
   const showInStarMap = (e: React.MouseEvent) => {
     e.stopPropagation()
     setStarMapFilter(category.id)
     setTab('starmap')
+  }
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setNameValue(category.name)
+    setEditing(true)
+  }
+
+  const saveName = async () => {
+    const name = nameValue.trim()
+    setEditing(false)
+    if (!name || name === category.name) return
+    try {
+      await updateCategory(category.id, { name })
+    } catch (e) {
+      console.error('category rename failed:', e)
+    }
   }
 
   return (
@@ -87,11 +109,44 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
         tabIndex={0}
         className="w-full flex items-center gap-1.5 px-3 py-1"
         style={{ color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer' }}
-        onClick={() => setOpen(o => !o)}
-        onKeyDown={e => e.key === 'Enter' && setOpen(o => !o)}
+        onClick={() => !editing && setOpen(o => !o)}
+        onKeyDown={e => e.key === 'Enter' && !editing && setOpen(o => !o)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
         <span style={{ color: category.color, fontSize: '8px' }}>●</span>
-        <span>{category.name}</span>
+        {editing ? (
+          <input
+            autoFocus
+            value={nameValue}
+            onChange={e => setNameValue(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            onBlur={saveName}
+            onKeyDown={e => {
+              e.stopPropagation()
+              if (e.key === 'Enter') saveName()
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            style={{
+              flex: 1, minWidth: 0, fontSize: '11px',
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              background: 'var(--bg-input)', color: 'var(--text-primary)',
+              border: '1px solid var(--border)', borderRadius: '3px',
+              padding: '0 4px', outline: 'none',
+            }}
+          />
+        ) : (
+          <span>{category.name}</span>
+        )}
+        {!editing && hovered && (
+          <button
+            title="이름 수정"
+            onClick={startEdit}
+            style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 2px', lineHeight: 1 }}
+          >
+            ✎
+          </button>
+        )}
         <button
           title="성도에서 이 은하 보기"
           onClick={showInStarMap}

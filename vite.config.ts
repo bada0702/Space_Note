@@ -23,6 +23,12 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
+    // HMR 웹소켓: 페이지를 연 호스트(iptime 도메인 등)로 wss 접속을 강제하고
+    // localhost 폴백 시도를 막는다
+    hmr: {
+      protocol: hasCert ? "wss" : "ws",
+      clientPort: 1420,
+    },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8001",
