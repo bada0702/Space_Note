@@ -3,12 +3,15 @@ import type { Category, Note } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 
+export const NOTE_DRAG_MIME = 'application/x-spacenote-note-id'
+
 interface Props {
   category: Category
   notes: Note[]
   onSelectNote: (id: string) => void
   activeNoteId?: string
   onCreateNote: (categoryId: string) => void
+  onDropNote: (noteId: string) => void
 }
 
 function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean; onSelect: () => void }) {
@@ -31,6 +34,8 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
       <button
         role="button"
         tabIndex={0}
+        draggable
+        onDragStart={e => e.dataTransfer.setData(NOTE_DRAG_MIME, note.id)}
         className="w-full text-left truncate"
         style={{
           fontSize: '13px',
@@ -41,6 +46,7 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           paddingTop: '3px',
           paddingBottom: '3px',
           display: 'block',
+          cursor: 'grab',
         }}
         onClick={onSelect}
         onKeyDown={e => e.key === 'Enter' && onSelect()}
@@ -71,17 +77,31 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
   )
 }
 
-export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCreateNote }: Props) {
+export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCreateNote, onDropNote }: Props) {
   const [open, setOpen] = useState(true)
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [nameValue, setNameValue] = useState(category.name)
+  const [dragOver, setDragOver] = useState(false)
   const { setTab, setStarMapFilter } = useNotesStore()
   const { updateCategory } = useCategoriesStore()
 
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(NOTE_DRAG_MIME)) return
+    e.preventDefault()
+    setDragOver(true)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const noteId = e.dataTransfer.getData(NOTE_DRAG_MIME)
+    if (noteId) onDropNote(noteId)
+  }
+
   const showInStarMap = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setStarMapFilter(category.id)
+    setStarMapFilter({ type: 'category', value: category.id })
     setTab('starmap')
   }
 
@@ -108,11 +128,18 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
         role="button"
         tabIndex={0}
         className="w-full flex items-center gap-1.5 px-3 py-1"
-        style={{ color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer' }}
+        style={{
+          color: 'var(--text-secondary)', fontSize: '11px', letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
+          background: dragOver ? 'var(--bg-input)' : undefined,
+          outline: dragOver ? '1px dashed var(--accent-line)' : undefined,
+        }}
         onClick={() => !editing && setOpen(o => !o)}
         onKeyDown={e => e.key === 'Enter' && !editing && setOpen(o => !o)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
       >
         <span style={{ color: category.color, fontSize: '8px' }}>●</span>
         {editing ? (

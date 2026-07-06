@@ -80,3 +80,17 @@ export interface Entity {
   type: string
   created_at: string
 }
+
+export interface TagSummary {
+  tag: string
+  count: number
+}
+
+export interface TaggedNote {
+  id: string
+  title: string
+  category_id: string | null
+  modified_at: string
+}
+
+export type StarMapFilter = { type: 'category' | 'tag'; value: string } | null

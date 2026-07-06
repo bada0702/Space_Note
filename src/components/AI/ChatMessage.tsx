@@ -1,12 +1,27 @@
+import { useState } from 'react'
 import type { AIChatMessage } from '../../types'
+import { useNotesStore } from '../../store/notesStore'
 
 export function ChatMessage({ msg }: { msg: AIChatMessage }) {
   const isUser = msg.role === 'user'
+  const { notes, createNote, setTab } = useNotesStore()
+  const [saved, setSaved] = useState(false)
+  const canSave = !isUser && !!msg.content && !msg.isStreaming && !msg.error
+
+  const handleSave = async () => {
+    if (!canSave || saved) return
+    const firstLine = msg.content.split('\n').find(l => l.trim())?.trim() ?? ''
+    const title = firstLine.length > 30 ? firstLine.slice(0, 30) + '…' : firstLine || `새 노트 ${notes.length + 1}`
+    await createNote(title, undefined, msg.content)
+    setTab('edit')
+    setSaved(true)
+  }
 
   return (
     <div style={{
       display: 'flex',
-      justifyContent: isUser ? 'flex-end' : 'flex-start',
+      flexDirection: 'column',
+      alignItems: isUser ? 'flex-end' : 'flex-start',
       marginBottom: 10,
     }}>
       <div style={{
@@ -28,6 +43,19 @@ export function ChatMessage({ msg }: { msg: AIChatMessage }) {
             : null
         }
       </div>
+      {canSave && (
+        <button
+          onClick={handleSave}
+          disabled={saved}
+          style={{
+            marginTop: 4, fontSize: 10, color: saved ? 'var(--accent-line)' : 'var(--text-secondary)',
+            background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+            padding: '2px 8px', cursor: saved ? 'default' : 'pointer', opacity: saved ? 1 : 0.7,
+          }}
+        >
+          {saved ? '✓ 노트로 저장됨' : '⤓ 노트로 저장'}
+        </button>
+      )}
     </div>
   )
 }

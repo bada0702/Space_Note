@@ -10,6 +10,7 @@ import { StarMapCanvas } from './components/StarMap/StarMapCanvas'
 import { ChatPanel } from './components/AI/ChatPanel'
 import { SearchPanel } from './components/Navigation/SearchPanel'
 import { DiscoveriesPanel } from './components/Navigation/DiscoveriesPanel'
+import { TagsPanel } from './components/Navigation/TagsPanel'
 import { ApiSettings } from './components/Setup/ApiSettings'
 import { useNotesStore } from './store/notesStore'
 import { useAIStore } from './store/aiStore'
@@ -24,6 +25,7 @@ function MainPanel() {
   if (panelOpen) return <ChatPanel />
   if (activePanel === 'search') return <SearchPanel />
   if (activePanel === 'discoveries') return <DiscoveriesPanel />
+  if (activePanel === 'tags') return <TagsPanel />
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

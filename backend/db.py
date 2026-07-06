@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS entities (
   norm TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tags (
+  id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  norm TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   anthropic_api_key TEXT NOT NULL DEFAULT '',

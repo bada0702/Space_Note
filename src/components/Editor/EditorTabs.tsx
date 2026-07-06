@@ -41,7 +41,9 @@ export function EditorTabs() {
           <button
             key={tab.id}
             onClick={() => {
-              if (tab.id === 'starmap') setStarMapFilter(activeNote?.category_id ?? null)
+              if (tab.id === 'starmap') {
+                setStarMapFilter(activeNote?.category_id ? { type: 'category', value: activeNote.category_id } : null)
+              }
               setTab(tab.id)
             }}
             className="px-3 py-2.5"

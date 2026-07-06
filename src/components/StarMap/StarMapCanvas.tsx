@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
 import { searchApi } from '../../api/searchApi'
+import { tagsApi } from '../../api/tagsApi'
 import type { DiscoveryRoute } from '../../types'
 
 interface Tooltip {
@@ -435,6 +436,19 @@ export function StarMapCanvas() {
   const { categories } = useCategoriesStore()
   const { notes, starMapFilter, openNote, setTab } = useNotesStore()
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
+  const [tagNoteIds, setTagNoteIds] = useState<Set<string> | null>(null)
+
+  // 태그 필터일 때는 해당 태그가 붙은 노트 id 집합을 먼저 가져와야
+  // 아래 씬 구성 effect에서 필터링에 쓸 수 있다 (은하를 넘나드는 필터라
+  // 카테고리처럼 동기적으로 계산할 수 없음).
+  useEffect(() => {
+    if (starMapFilter?.type !== 'tag') { setTagNoteIds(null); return }
+    let alive = true
+    tagsApi.notesForTag(starMapFilter.value).then(list => {
+      if (alive) setTagNoteIds(new Set(list.map(n => n.id)))
+    })
+    return () => { alive = false }
+  }, [starMapFilter])
 
   useEffect(() => {
     const el = containerRef.current
@@ -444,12 +458,15 @@ export function StarMapCanvas() {
     const height = el.clientHeight || 600
     const disposables: { dispose: () => void }[] = []
 
-    // 표시 대상 필터링
-    const visibleNotes = starMapFilter
-      ? notes.filter(n => n.category_id === starMapFilter)
-      : notes
-    const visibleCats = starMapFilter
-      ? categories.filter(c => c.id === starMapFilter)
+    // 표시 대상 필터링 — 카테고리 필터는 은하 하나로 좁히고, 태그 필터는
+    // 은하를 그대로 둔 채(태그는 여러 은하에 걸칠 수 있음) 노트만 좁힌다.
+    const visibleNotes = !starMapFilter
+      ? notes
+      : starMapFilter.type === 'category'
+        ? notes.filter(n => n.category_id === starMapFilter.value)
+        : notes.filter(n => tagNoteIds?.has(n.id) ?? false)
+    const visibleCats = starMapFilter?.type === 'category'
+      ? categories.filter(c => c.id === starMapFilter.value)
       : categories
 
     // 은하 간 간격이 보장되도록 항성 위치를 동적으로 계산 (필터와 무관하게
@@ -475,8 +492,8 @@ export function StarMapCanvas() {
         0,
       ) * 1.7,
     )
-    if (starMapFilter) {
-      const ci = categories.findIndex(c => c.id === starMapFilter)
+    if (starMapFilter?.type === 'category') {
+      const ci = categories.findIndex(c => c.id === starMapFilter.value)
       if (ci >= 0) {
         // 선택한 은하계를 화면 중앙에 두고, 은하 전체가 들어오도록 거리 조정
         lookTarget = starPositions[ci].clone()
@@ -924,8 +941,17 @@ export function StarMapCanvas() {
         const dx = e.clientX - lastMouse.x
         const dy = e.clientY - lastMouse.y
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true
-        theta -= dx * 0.006
-        phi = Math.max(0.12, Math.min(Math.PI - 0.12, phi + dy * 0.006))
+        if (e.ctrlKey) {
+          // Ctrl+드래그: 중심점(lookTarget) 이동 — 화면 기준 좌우/상하 팬
+          const right = new THREE.Vector3(1, 0, 0).transformDirection(camera.matrixWorld)
+          const up = new THREE.Vector3(0, 1, 0).transformDirection(camera.matrixWorld)
+          const panSpeed = camR * 0.0015
+          lookTarget.addScaledVector(right, -dx * panSpeed)
+          lookTarget.addScaledVector(up, dy * panSpeed)
+        } else {
+          theta -= dx * 0.006
+          phi = Math.max(0.12, Math.min(Math.PI - 0.12, phi + dy * 0.006))
+        }
         lastMouse = { x: e.clientX, y: e.clientY }
         updateCamera()
         setTooltip(null)
@@ -1045,7 +1071,7 @@ export function StarMapCanvas() {
       try { el.removeChild(canvas) } catch { /* */ }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories, notes, starMapFilter])
+  }, [categories, notes, starMapFilter, tagNoteIds])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -1080,7 +1106,7 @@ export function StarMapCanvas() {
         fontSize: 10, color: 'rgba(160,180,220,0.28)', letterSpacing: 2,
         pointerEvents: 'none', whiteSpace: 'nowrap',
       }}>
-        {starMapFilter ? '현재 은하 성도' : '전체 성도'} · 드래그 회전 · 스크롤 줌 · 클릭으로 노트 열기
+        {starMapFilter?.type === 'category' ? '현재 은하 성도' : starMapFilter?.type === 'tag' ? `#${starMapFilter.value} 성도` : '전체 성도'} · 드래그 회전 · Ctrl+드래그 이동 · 스크롤 줌 · 클릭으로 노트 열기
       </div>
     </div>
   )

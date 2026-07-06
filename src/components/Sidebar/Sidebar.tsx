@@ -20,7 +20,7 @@ export function Sidebar() {
     setTab('starmap')
   }
 
-  const handleNavPanel = (id: 'discoveries' | 'search') => {
+  const handleNavPanel = (id: 'discoveries' | 'search' | 'tags') => {
     const isAlreadyOpen = activePanel === id && !panelOpen
     closeAll()
     if (!isAlreadyOpen) setPanel(id)
@@ -55,8 +55,9 @@ export function Sidebar() {
           ✦ 성도
         </button>
         {[
-          { id: 'discoveries' as const, label: '⟡ 미개척 항로' },
-          { id: 'search' as const,      label: '⊕ 항법' },
+          { id: 'discoveries' as const, icon: '⟡', label: '미개척 항로' },
+          { id: 'search' as const,      icon: '⊕', label: '항법' },
+          { id: 'tags' as const,        icon: '#', label: '태그' },
         ].map(item => (
           <button
             key={item.id}
@@ -70,7 +71,7 @@ export function Sidebar() {
               transition: 'all 0.15s',
             }}
           >
-            {item.label}
+            <span style={{ fontSize: item.id === 'search' ? '3px' : '11px' }}>{item.icon}</span> {item.label}
           </button>
         ))}
         <button
@@ -92,14 +93,6 @@ export function Sidebar() {
           style={{ fontSize: '13px', color: 'var(--text-secondary)' }}
         >
           ⚙ 설정
-        </button>
-
-        <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
-        <button
-          className="w-full text-left px-4 py-1.5"
-          style={{ fontSize: '13px', color: 'var(--text-secondary)', opacity: 0.6 }}
-        >
-          성운
         </button>
       </div>
     </div>

@@ -10,6 +10,7 @@ from db import get_conn
 from models import NoteCreate, NotePatch
 from services import vault
 from services import extraction
+from services.tagparse import extract_tags
 from services.textnorm import norm_name
 
 router = APIRouter()
@@ -24,6 +25,17 @@ def _row_to_note(row) -> dict:
     d = dict(row)
     d["tags"] = json.loads(d.get("tags") or "[]")
     return d
+
+
+def _sync_tags(conn, note_id: str, content: str) -> None:
+    """본문 인라인 #태그를 파싱해 tags 테이블을 최신 상태로 맞춘다 (AI 호출 없음, 동기 처리)."""
+    conn.execute("DELETE FROM tags WHERE note_id = ?", (note_id,))
+    now = _now()
+    for tag in extract_tags(content):
+        conn.execute(
+            "INSERT INTO tags (id, note_id, tag, norm, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), note_id, tag, norm_name(tag), now),
+        )
 
 
 def _run_extraction(note_id: str, content: str) -> None:
@@ -127,6 +139,7 @@ def create_note(body: NoteCreate, bg: BackgroundTasks):
             (nid, path, body.title, content, body.category_id,
              json.dumps(tags), word_count, now, now),
         )
+        _sync_tags(conn, nid, content)
         row = conn.execute("SELECT * FROM notes WHERE id = ?", (nid,)).fetchone()
     if content.strip():
         bg.add_task(_run_extraction, nid, content)
@@ -173,6 +186,8 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
             (new_title, new_content, new_category, json.dumps(new_tags),
              word_count, path, now, analysis_status, nid),
         )
+        if content_changed:
+            _sync_tags(conn, nid, new_content)
         updated = conn.execute("SELECT * FROM notes WHERE id = ?", (nid,)).fetchone()
 
     if content_changed and new_content.strip():
@@ -188,4 +203,5 @@ def delete_note(nid: str):
             vault.delete_md(row["title"])
         conn.execute("DELETE FROM notes WHERE id = ?", (nid,))
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
+        conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))
     return Response(status_code=204)

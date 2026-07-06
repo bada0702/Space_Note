@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Note, EditorTab } from '../types'
+import type { Note, EditorTab, StarMapFilter } from '../types'
 import { notesApi } from '../api/notesApi'
 import { formatDateTime } from '../utils/dateFormat'
 
@@ -8,15 +8,16 @@ interface NotesState {
   activeNote: Note | null
   activeTab: EditorTab
   vaultPath: string
-  starMapFilter: string | null  // null = 전체, string = 카테고리 ID
+  starMapFilter: StarMapFilter  // null = 전체, {type:'category'|'tag', value} = 필터
   fetchNotes: (categoryId?: string) => Promise<void>
   openNote: (id: string) => Promise<void>
   saveNote: (id: string, content: string) => Promise<void>
   renameNote: (id: string, title: string) => Promise<void>
-  createNote: (title: string, categoryId?: string) => Promise<Note>
+  createNote: (title: string, categoryId?: string, content?: string) => Promise<Note>
   deleteNote: (id: string) => Promise<void>
+  moveNote: (id: string, categoryId: string | null) => Promise<void>
   setTab: (tab: EditorTab) => void
-  setStarMapFilter: (id: string | null) => void
+  setStarMapFilter: (filter: StarMapFilter) => void
   setVaultPath: (path: string) => void
 }
 
@@ -54,10 +55,18 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     }))
   },
 
-  createNote: async (title, categoryId) => {
-    const note = await notesApi.create(title, get().vaultPath, categoryId)
+  createNote: async (title, categoryId, content) => {
+    const note = await notesApi.create(title, get().vaultPath, categoryId, content)
     set(s => ({ notes: [note, ...s.notes], activeNote: note }))
     return note
+  },
+
+  moveNote: async (id, categoryId) => {
+    const updated = await notesApi.update(id, { category_id: categoryId })
+    set(s => ({
+      notes: s.notes.map(n => n.id === id ? updated : n),
+      activeNote: s.activeNote?.id === id ? updated : s.activeNote,
+    }))
   },
 
   deleteNote: async (id) => {
@@ -69,6 +78,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   },
 
   setTab: (tab) => set({ activeTab: tab }),
-  setStarMapFilter: (id) => set({ starMapFilter: id }),
+  setStarMapFilter: (filter) => set({ starMapFilter: filter }),
   setVaultPath: (path) => set({ vaultPath: path }),
 }))

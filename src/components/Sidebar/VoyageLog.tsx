@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
-import { CategoryItem } from './CategoryItem'
+import { CategoryItem, NOTE_DRAG_MIME } from './CategoryItem'
 
 const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#0C8599']
 
 export function VoyageLog() {
   const { categories, fetchCategories, addCategory, loading } = useCategoriesStore()
-  const { notes, fetchNotes, openNote, createNote, activeNote } = useNotesStore()
+  const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote } = useNotesStore()
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catError, setCatError] = useState('')
+  const [uncatDragOver, setUncatDragOver] = useState(false)
 
   useEffect(() => {
     fetchCategories().catch(console.error)
@@ -33,6 +34,18 @@ export function VoyageLog() {
   const handleCreateNote = async (categoryId: string) => {
     const title = `새 노트 ${notes.length + 1}`
     await createNote(title, categoryId).catch(console.error)
+  }
+
+  const handleSelectNote = (id: string) => {
+    openNote(id)
+    setTab('edit')
+  }
+
+  const handleUncatDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setUncatDragOver(false)
+    const noteId = e.dataTransfer.getData(NOTE_DRAG_MIME)
+    if (noteId) moveNote(noteId, null)
   }
 
   const notesByCategory = (catId: string) => notes.filter(n => n.category_id === catId)
@@ -120,20 +133,37 @@ export function VoyageLog() {
           key={cat.id}
           category={cat}
           notes={notesByCategory(cat.id)}
-          onSelectNote={openNote}
+          onSelectNote={handleSelectNote}
           onCreateNote={handleCreateNote}
+          onDropNote={noteId => moveNote(noteId, cat.id)}
           activeNoteId={activeNote?.id}
         />
       ))}
 
       {uncategorized.length > 0 && (
         <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
-          <div className="px-3 py-1" style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+          <div
+            className="px-3 py-1"
+            style={{
+              fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-secondary)',
+              background: uncatDragOver ? 'var(--bg-input)' : undefined,
+              outline: uncatDragOver ? '1px dashed var(--accent-line)' : undefined,
+            }}
+            onDragOver={e => {
+              if (!e.dataTransfer.types.includes(NOTE_DRAG_MIME)) return
+              e.preventDefault()
+              setUncatDragOver(true)
+            }}
+            onDragLeave={() => setUncatDragOver(false)}
+            onDrop={handleUncatDrop}
+          >
             미분류
           </div>
           {uncategorized.map(note => (
             <button
               key={note.id}
+              draggable
+              onDragStart={e => e.dataTransfer.setData(NOTE_DRAG_MIME, note.id)}
               className="w-full text-left truncate"
               style={{
                 fontSize: '13px',
@@ -144,8 +174,9 @@ export function VoyageLog() {
                 paddingTop: '3px',
                 paddingBottom: '3px',
                 display: 'block',
+                cursor: 'grab',
               }}
-              onClick={() => openNote(note.id)}
+              onClick={() => handleSelectNote(note.id)}
             >
               {note.title}
             </button>

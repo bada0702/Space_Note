@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { SearchResult, Discovery } from '../types'
 import { searchApi } from '../api/searchApi'
 
-type Panel = 'search' | 'discoveries' | null
+type Panel = 'search' | 'discoveries' | 'tags' | null
 
 interface SearchState {
   activePanel: Panel
