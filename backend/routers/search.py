@@ -133,18 +133,15 @@ def discovery_routes():
         for a, b in combinations(sorted(note_ids), 2):
             pairs[(a, b)].add(display)
 
-    all_pairs_by_strength = []
+    by_note: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for key in pairs:
-        all_pairs_by_strength.append((key, len(pairs[key])))
-    all_pairs_by_strength.sort(key=lambda x: x[1], reverse=True)
+        by_note[key[0]].append(key)
+        by_note[key[1]].append(key)
 
     keep: set[tuple[str, str]] = set()
-    note_count: dict[str, int] = defaultdict(int)
-    for (a, b), strength in all_pairs_by_strength:
-        if note_count[a] < _MAX_ROUTES_PER_NOTE and note_count[b] < _MAX_ROUTES_PER_NOTE:
-            keep.add((a, b))
-            note_count[a] += 1
-            note_count[b] += 1
+    for note_id, keys in by_note.items():
+        keys.sort(key=lambda k: len(pairs[k]), reverse=True)
+        keep.update(keys[:_MAX_ROUTES_PER_NOTE])
 
     return [
         {"note_a": a, "note_b": b, "shared_entities": sorted(pairs[(a, b)])}
