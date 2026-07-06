@@ -13,7 +13,6 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: true,
     https: hasCert
       ? {
           key: fs.readFileSync(keyPath),
@@ -23,12 +22,10 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
-    // HMR 웹소켓: 페이지를 연 호스트(iptime 도메인 등)로 wss 접속을 강제하고
-    // localhost 폴백 시도를 막는다
-    hmr: {
-      protocol: hasCert ? "wss" : "ws",
-      clientPort: 1420,
-    },
+    // 공유기(iptime) 경유 접속에서 HMR 웹소켓이 차단되면 vite 클라이언트가
+    // "서버 재시작"으로 오인해 페이지를 무한 리로드한다 → HMR 비활성화.
+    // 코드 변경 반영은 브라우저 수동 새로고침으로 한다.
+    hmr: false,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8001",

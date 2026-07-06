@@ -944,6 +944,13 @@ export function StarMapCanvas() {
       cancelAnimationFrame(animId)
       obs.disconnect()
       disposables.forEach(d => d.dispose())
+      scene.traverse(obj => {
+        const mesh = obj as THREE.Mesh
+        mesh.geometry?.dispose()
+        const material = mesh.material
+        if (Array.isArray(material)) material.forEach(m => m.dispose())
+        else material?.dispose()
+      })
       composer.dispose()
       renderer.dispose()
       try { el.removeChild(canvas) } catch { /* */ }

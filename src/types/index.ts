@@ -27,8 +27,6 @@ export type AIModel =
   | 'claude-haiku-4-5'
   | 'gemini-2.5-flash'
   | 'gemini-2.0-flash'
-  | 'gpt-4o-mini'
-  | 'gpt-4o'
 
 export interface AIChatMessage {
   id: string

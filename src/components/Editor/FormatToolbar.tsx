@@ -206,11 +206,13 @@ export function FormatToolbar({ editorRef }: Props) {
   const handlePrint = () => {
     if (!activeNote || !editorRef.current) return
     const content = editorRef.current.getValue()
+    const escapeHtml = (s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const title = escapeHtml(activeNote.title)
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${activeNote.title}</title>
+  <title>${title}</title>
   <style>
     body { font-family: 'Pretendard', 'Inter', sans-serif; font-size: 14px; line-height: 1.8; max-width: 800px; margin: 40px auto; color: #0a0a0a; }
     h1 { font-size: 24px; font-weight: 700; margin: 24px 0 12px; }
@@ -224,8 +226,8 @@ export function FormatToolbar({ editorRef }: Props) {
   </style>
 </head>
 <body>
-  <h1>${activeNote.title}</h1>
-  <pre style="white-space: pre-wrap; font-family: inherit; background: none; padding: 0;">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+  <h1>${title}</h1>
+  <pre style="white-space: pre-wrap; font-family: inherit; background: none; padding: 0;">${escapeHtml(content)}</pre>
 </body>
 </html>`
     const w = window.open('', '_blank')
