@@ -1,6 +1,7 @@
 import sqlite3
 from contextlib import contextmanager
 from config import settings
+from services.textnorm import norm_name
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories (
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS entities (
   note_id TEXT NOT NULL,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
+  norm TEXT,
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS settings (
@@ -44,6 +46,16 @@ def init_db() -> None:
     try:
         conn.executescript(SCHEMA)
         conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)")
+        # 마이그레이션: 기존 entities 테이블에 norm 컬럼 추가 + 백필
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(entities)")}
+        if "norm" not in cols:
+            conn.execute("ALTER TABLE entities ADD COLUMN norm TEXT")
+        for eid, name in conn.execute(
+            "SELECT id, name FROM entities WHERE norm IS NULL"
+        ).fetchall():
+            conn.execute(
+                "UPDATE entities SET norm = ? WHERE id = ?", (norm_name(name), eid)
+            )
         conn.commit()
     finally:
         conn.close()

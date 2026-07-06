@@ -12,6 +12,8 @@ ALLOWED_CHAT_MODELS = {"claude-sonnet-4-6", "claude-haiku-4-5"}
 _EXTRACT_PROMPT = (
     "다음 노트에서 핵심 엔티티(인물/개념/장소/조직 등)를 추출해 "
     'JSON 배열로만 답하라. 각 항목은 {"name": str, "type": str} 형식. '
+    "표기 규칙: 소프트웨어/기술/제품 등 영문 고유명사는 한글 음차 대신 "
+    "널리 쓰이는 공식 영문 표기를 사용하라(예: 올라마 → Ollama, 도커 → Docker). "
     "다른 설명 없이 JSON만 출력.\n\n노트:\n"
 )
 
