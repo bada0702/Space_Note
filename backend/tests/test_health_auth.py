@@ -18,3 +18,11 @@ def test_categories_with_auth_ok(client):
     r = client.get("/categories", headers=AUTH)
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_missing_token_config_returns_500(client, monkeypatch):
+    from config import settings
+    monkeypatch.setattr(settings, "SPACENOTE_TOKEN", "")
+    r = client.get("/categories", headers=AUTH)
+    assert r.status_code == 500
+    assert "not configured" in r.json()["detail"]

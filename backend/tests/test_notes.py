@@ -56,3 +56,24 @@ def test_list_filter_by_category(client, monkeypatch):
 
 def test_get_missing_note_404(client):
     assert client.get("/notes/nope", headers=AUTH).status_code == 404
+
+
+def test_delete_missing_note_is_idempotent(client):
+    r = client.delete("/notes/does-not-exist", headers=AUTH)
+    assert r.status_code == 204
+
+
+def test_patch_title_only_does_not_reset_analyzed_status(client, monkeypatch):
+    from db import get_conn
+
+    _mock_extract(monkeypatch, [{"name": "테스트", "type": "concept"}])
+    note = client.post("/notes", json={"title": "원제목", "content": "본문"}, headers=AUTH).json()
+
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE notes SET analysis_status='analyzed' WHERE id=?", (note["id"],)
+        )
+
+    r = client.patch(f"/notes/{note['id']}", json={"title": "새 제목"}, headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["analysis_status"] == "analyzed"

@@ -27,3 +27,18 @@ def test_extract_entities_raises_without_key(client):
     assert ac.has_api_key() is False
     with _pytest.raises(ValueError):
         ac.extract_entities("내용 있는 노트")
+
+
+def test_stream_chat_rejects_unknown_model():
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        list(ac.stream_chat("not-a-real-model", "sys", [{"role": "user", "content": "hi"}]))
+
+
+def test_stream_chat_raises_without_key(client):
+    import pytest as _pytest
+
+    assert ac.has_api_key() is False
+    with _pytest.raises(ValueError):
+        list(ac.stream_chat("claude-sonnet-4-6", "sys", [{"role": "user", "content": "hi"}]))

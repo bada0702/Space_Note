@@ -35,6 +35,35 @@ def test_falls_back_to_gemini(client, monkeypatch):
     assert extraction.extract_entities("x")[0]["name"] == "G"
 
 
+def test_falls_back_to_gemini_when_anthropic_key_invalid(client, monkeypatch):
+    from services import extraction, anthropic_client, gemini_client
+
+    monkeypatch.setattr(anthropic_client, "has_api_key", lambda: True)
+    monkeypatch.setattr(gemini_client, "has_api_key", lambda: True)
+
+    def _raise(content):
+        raise Exception("401 invalid x-api-key")
+    monkeypatch.setattr(anthropic_client, "extract_entities", _raise)
+    monkeypatch.setattr(
+        gemini_client, "extract_entities", lambda c: [{"name": "G", "type": "개념"}]
+    )
+    assert extraction.extract_entities("x")[0]["name"] == "G"
+
+
+def test_reraises_when_anthropic_fails_and_no_gemini_key(client, monkeypatch):
+    from services import extraction, anthropic_client, gemini_client
+
+    monkeypatch.setattr(anthropic_client, "has_api_key", lambda: True)
+    monkeypatch.setattr(gemini_client, "has_api_key", lambda: False)
+
+    def _raise(content):
+        raise ValueError("401 invalid x-api-key")
+    monkeypatch.setattr(anthropic_client, "extract_entities", _raise)
+
+    with pytest.raises(ValueError):
+        extraction.extract_entities("x")
+
+
 def test_gemini_chat_payload_roles():
     from services import gemini_client
 

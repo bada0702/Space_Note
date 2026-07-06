@@ -60,3 +60,18 @@ def test_analyze_one_missing_note_404(client, monkeypatch):
     monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
     r = client.post("/notes/does-not-exist/analyze", headers=AUTH)
     assert r.status_code == 404
+
+
+def test_extraction_failure_sets_failed_status_and_no_entities(client, monkeypatch):
+    from routers import notes as notes_router
+
+    def _raise(content):
+        raise Exception("boom")
+    monkeypatch.setattr(notes_router.extraction, "extract_entities", _raise)
+
+    r = client.post("/notes", json={"title": "x", "content": "본문"}, headers=AUTH)
+    nid = r.json()["id"]
+    got = client.get(f"/notes/{nid}", headers=AUTH).json()
+    assert got["analysis_status"] == "failed"
+    ents = client.get(f"/entities/{nid}", headers=AUTH).json()
+    assert ents == []
