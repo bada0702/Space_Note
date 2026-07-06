@@ -67,6 +67,12 @@ export interface Discovery {
   modified_at: string
 }
 
+export interface DiscoveryRoute {
+  note_a: string
+  note_b: string
+  shared_entities: string[]
+}
+
 export interface Entity {
   id: string
   note_id: string
