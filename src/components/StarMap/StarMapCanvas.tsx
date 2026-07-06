@@ -5,6 +5,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
+import { searchApi } from '../../api/searchApi'
+import type { DiscoveryRoute } from '../../types'
 
 interface Tooltip {
   title: string
@@ -27,6 +29,15 @@ interface SunData {
   glow: THREE.Sprite
   glowBase: number
   phase: number
+}
+
+interface RouteVisual {
+  aIdx: number
+  bIdx: number
+  line: THREE.Line
+  ship: THREE.Mesh
+  t: number
+  dir: number
 }
 
 // 각 카테고리 항성의 3D 위치
@@ -767,6 +778,8 @@ export function StarMapCanvas() {
         )
         mesh.add(atmo)
 
+        mesh.userData.categoryColor = catColor.clone()
+
         // 동심원 궤도 반경 (안쪽부터 바깥쪽으로 일정 간격)
         const radius = sunR + 16 + j * 12 + (j % 2) * 2.5
         const angle = (j * 2.399963) % (Math.PI * 2) // 황금각으로 시작각 분산
@@ -815,6 +828,57 @@ export function StarMapCanvas() {
         })
         noteIds.push(note.id)
       })
+    })
+
+    // ── 항로 (발견된 노트 연결) ──────────────────────────────
+    const routeVisuals: RouteVisual[] = []
+    const shipMeshes: THREE.Mesh[] = []
+    // 콘의 뾰족한 끝을 +Z로 맞춰, 이동 방향(tangent) 벡터와
+    // quaternion.setFromUnitVectors로 직접 정렬한다(lookAt은 카메라가 아닌
+    // 일반 Mesh에서는 방향이 반대로 적용되는 특성이 있어 사용하지 않는다).
+    const shipGeometry = new THREE.ConeGeometry(0.6, 2.2, 6)
+    shipGeometry.rotateX(Math.PI / 2)
+    const shipMaterial = new THREE.MeshBasicMaterial({ color: 0xf5f5ff })
+
+    function buildRouteCurvePoints(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3[] {
+      const mid = a.clone().add(b).multiplyScalar(0.5)
+      mid.y += a.distanceTo(b) * 0.15
+      const curve = new THREE.CatmullRomCurve3([a, mid, b])
+      return curve.getPoints(24)
+    }
+
+    let routesCancelled = false
+    searchApi.discoveryRoutes().then(routes => {
+      if (routesCancelled) return
+      routes.forEach((route: DiscoveryRoute) => {
+        const aIdx = noteIds.indexOf(route.note_a)
+        const bIdx = noteIds.indexOf(route.note_b)
+        if (aIdx < 0 || bIdx < 0) return // 카테고리 필터로 숨겨진 노트
+
+        const colorA = starMeshes[aIdx].userData.categoryColor as THREE.Color
+        const colorB = starMeshes[bIdx].userData.categoryColor as THREE.Color
+        const lineColor = colorA.clone().lerp(colorB, 0.5)
+
+        const points = buildRouteCurvePoints(starMeshes[aIdx].position, starMeshes[bIdx].position)
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(points)
+        const line = new THREE.Line(
+          lineGeo,
+          new THREE.LineBasicMaterial({
+            color: lineColor, transparent: true, opacity: 0.35,
+            depthWrite: false, blending: THREE.AdditiveBlending,
+          }),
+        )
+        scene.add(line)
+
+        const ship = new THREE.Mesh(shipGeometry, shipMaterial)
+        ship.userData.shared = route.shared_entities
+        scene.add(ship)
+        shipMeshes.push(ship)
+
+        routeVisuals.push({ aIdx, bIdx, line, ship, t: Math.random(), dir: 1 })
+      })
+    }).catch(err => {
+      console.error('discovery routes 로드 실패:', err)
     })
 
     // ── 카메라 컨트롤 ────────────────────────────────────────
@@ -941,6 +1005,7 @@ export function StarMapCanvas() {
     obs.observe(el)
 
     return () => {
+      routesCancelled = true
       cancelAnimationFrame(animId)
       obs.disconnect()
       disposables.forEach(d => d.dispose())
