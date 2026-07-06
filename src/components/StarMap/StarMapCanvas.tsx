@@ -907,7 +907,7 @@ export function StarMapCanvas() {
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       const y = -((e.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
-      const hits = raycaster.intersectObjects(starMeshes, false)
+      const hits = raycaster.intersectObjects([...starMeshes, ...shipMeshes], false)
       return { hit: hits[0]?.object as THREE.Mesh | undefined, rect }
     }
 
@@ -938,6 +938,12 @@ export function StarMapCanvas() {
         if (note) {
           canvas.style.cursor = 'pointer'
           setTooltip({ title: note.title, x: e.clientX - rect.left, y: e.clientY - rect.top })
+          return
+        }
+        const shared = hit.userData.shared as string[] | undefined
+        if (shared) {
+          canvas.style.cursor = 'default'
+          setTooltip({ title: `공유: ${shared.join(', ')}`, x: e.clientX - rect.left, y: e.clientY - rect.top })
           return
         }
       }
