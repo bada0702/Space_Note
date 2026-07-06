@@ -56,5 +56,6 @@ def update_category(cid: str, body: CategoryPatch):
 @router.delete("/categories/{cid}", status_code=204)
 def delete_category(cid: str):
     with get_conn() as conn:
+        conn.execute("UPDATE notes SET category_id = NULL WHERE category_id = ?", (cid,))
         conn.execute("DELETE FROM categories WHERE id = ?", (cid,))
     return Response(status_code=204)

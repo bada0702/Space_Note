@@ -50,12 +50,12 @@ def extract_entities(content: str) -> list[dict]:
     # 무료 등급 분당 한도(429) 대응: 지수 백오프로 최대 4회 재시도
     delays = [0, 8, 16, 32]
     resp = None
-    for i, delay in enumerate(delays):
+    for delay in delays:
         if delay:
             time.sleep(delay)
         resp = httpx.post(
             f"{_BASE}/{EXTRACT_MODEL}:generateContent",
-            params={"key": key},
+            headers={"x-goog-api-key": key},
             json=_chat_payload(
                 "", [{"role": "user", "content": _EXTRACT_PROMPT + content}]
             ),
@@ -83,7 +83,8 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     with httpx.stream(
         "POST",
         f"{_BASE}/{model}:streamGenerateContent",
-        params={"key": key, "alt": "sse"},
+        params={"alt": "sse"},
+        headers={"x-goog-api-key": key},
         json=_chat_payload(system, messages),
         timeout=120,
     ) as resp:

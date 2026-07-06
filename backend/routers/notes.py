@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -9,8 +10,10 @@ from db import get_conn
 from models import NoteCreate, NotePatch
 from services import vault
 from services import extraction
+from services.textnorm import norm_name
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -32,14 +35,16 @@ def _run_extraction(note_id: str, content: str) -> None:
             conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))
             for e in entities:
                 conn.execute(
-                    "INSERT INTO entities (id, note_id, name, type, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), note_id, e["name"], e["type"], now),
+                    "INSERT INTO entities (id, note_id, name, type, norm, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), note_id, e["name"], e["type"],
+                     norm_name(e["name"]), now),
                 )
             conn.execute(
                 "UPDATE notes SET analysis_status = 'analyzed' WHERE id = ?", (note_id,)
             )
     except Exception:
+        logger.exception("entity extraction failed for note %s", note_id)
         with get_conn() as conn:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'failed' WHERE id = ?", (note_id,)
@@ -154,6 +159,8 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
         new_tags = body.tags if body.tags is not None else current["tags"]
         now = _now()
         word_count = len(new_content.split())
+        content_changed = body.content is not None and new_content != current["content"]
+        analysis_status = "pending" if content_changed else current["analysis_status"]
 
         if new_title != current["title"]:
             vault.delete_md(current["title"])
@@ -161,14 +168,14 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
 
         conn.execute(
             "UPDATE notes SET title = ?, content = ?, category_id = ?, tags = ?, "
-            "word_count = ?, path = ?, modified_at = ?, analysis_status = 'pending' "
+            "word_count = ?, path = ?, modified_at = ?, analysis_status = ? "
             "WHERE id = ?",
             (new_title, new_content, new_category, json.dumps(new_tags),
-             word_count, path, now, nid),
+             word_count, path, now, analysis_status, nid),
         )
         updated = conn.execute("SELECT * FROM notes WHERE id = ?", (nid,)).fetchone()
 
-    if body.content is not None and new_content.strip():
+    if content_changed and new_content.strip():
         bg.add_task(_run_extraction, nid, new_content)
     return _row_to_note(updated)
 
