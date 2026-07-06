@@ -19,16 +19,35 @@ if [ -f ".backend.pid" ]; then
         echo "Backend process (PID: $BACKEND_PID) was not running."
     fi
     rm .backend.pid
-else
-    # Fallback: kill any uvicorn process on port 8001
-    PID=$(lsof -t -i:8001 2>/dev/null)
-    if [ ! -z "$PID" ]; then
-        kill $PID
-        echo "Backend on port 8001 stopped."
-    fi
 fi
 
-# 2. Kill frontend/tauri processes
+# uvicorn --reload spawns a child worker whose PID differs from $!; killing
+# only the parent can leave that child orphaned and stuck holding the port.
+# Always sweep port 8001 as well so no zombie backend survives a restart.
+PIDS=$(lsof -t -i:8001 2>/dev/null)
+if [ ! -z "$PIDS" ]; then
+    kill $PIDS 2>/dev/null
+    sleep 1
+    PIDS=$(lsof -t -i:8001 2>/dev/null)
+    if [ ! -z "$PIDS" ]; then
+        kill -9 $PIDS 2>/dev/null
+    fi
+    echo "Backend on port 8001 stopped."
+fi
+
+# 2. Stop frontend launcher using PID (npm run dev / tauri dev)
+if [ -f ".frontend.pid" ]; then
+    FRONTEND_LAUNCHER_PID=$(cat .frontend.pid)
+    if kill -0 $FRONTEND_LAUNCHER_PID 2>/dev/null; then
+        # Kill the launcher and its child processes (vite/tauri)
+        pkill -P $FRONTEND_LAUNCHER_PID 2>/dev/null || true
+        kill $FRONTEND_LAUNCHER_PID 2>/dev/null || true
+        echo "Frontend launcher stopped (PID: $FRONTEND_LAUNCHER_PID)."
+    fi
+    rm .frontend.pid
+fi
+
+# 3. Kill any remaining frontend/tauri processes on port 1420
 FRONTEND_PID=$(lsof -t -i:1420 2>/dev/null)
 if [ ! -z "$FRONTEND_PID" ]; then
     kill $FRONTEND_PID
