@@ -40,7 +40,7 @@ export function NotePreview() {
     <>
       <style>{PROSE_CSS}</style>
       <div
-        className="flex-1 overflow-y-auto"
+        className="h-full overflow-y-auto"
         style={{ padding: '32px 48px', color: 'var(--text-primary)' }}
       >
         <div

@@ -71,6 +71,11 @@ body {
   border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
+/* Monaco 에디터 줄 번호 폰트 크기 축소 (본문보다 작게) */
+.monaco-editor .line-numbers {
+  font-size: 11px !important;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 0.3; transform: scale(0.85); }
   50%       { opacity: 1;   transform: scale(1.15); }

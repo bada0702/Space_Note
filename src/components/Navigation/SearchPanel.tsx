@@ -28,7 +28,7 @@ export function SearchPanel() {
           fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
           letterSpacing: '0.08em', marginBottom: 8,
         }}>
-          ⊕ 항법 — 전문 검색
+          <span style={{ fontSize: 8 }}>⊕</span> 항법 — 전문 검색
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <input

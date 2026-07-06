@@ -80,23 +80,35 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     key = _api_key()
     if not key:
         raise ValueError("Google API 키가 설정되지 않았습니다")
-    with httpx.stream(
-        "POST",
-        f"{_BASE}/{model}:streamGenerateContent",
-        params={"alt": "sse"},
-        headers={"x-goog-api-key": key},
-        json=_chat_payload(system, messages),
-        timeout=120,
-    ) as resp:
-        resp.raise_for_status()
-        for line in resp.iter_lines():
-            if not line.startswith("data: "):
+
+    # 무료 등급 분당 한도(429) 대응: 아직 응답을 하나도 스트리밍하지 않은
+    # 상태에서만 재시도 — 첫 청크가 나간 뒤에는 재요청 시 내용이 중복될 수 있다.
+    delays = [0, 8, 16, 32]
+    for i, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        with httpx.stream(
+            "POST",
+            f"{_BASE}/{model}:streamGenerateContent",
+            params={"alt": "sse"},
+            headers={"x-goog-api-key": key},
+            json=_chat_payload(system, messages),
+            timeout=120,
+        ) as resp:
+            if resp.status_code == 429:
+                if i == len(delays) - 1:
+                    raise ValueError("Gemini API 요청 한도(429)를 초과했습니다 — 잠시 후 다시 시도하세요")
                 continue
-            chunk = line[6:].strip()
-            if not chunk or chunk == "[DONE]":
-                continue
-            obj = json.loads(chunk)
-            for cand in obj.get("candidates", []):
-                for part in cand.get("content", {}).get("parts", []):
-                    if part.get("text"):
-                        yield part["text"]
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                chunk = line[6:].strip()
+                if not chunk or chunk == "[DONE]":
+                    continue
+                obj = json.loads(chunk)
+                for cand in obj.get("candidates", []):
+                    for part in cand.get("content", {}).get("parts", []):
+                        if part.get("text"):
+                            yield part["text"]
+            return

@@ -290,15 +290,19 @@ export function FormatToolbar({ editorRef }: Props) {
         display: 'flex',
         alignItems: 'center',
         padding: '3px 12px',
-        gap: '1px',
         borderBottom: '1px solid var(--border)',
         flexShrink: 0,
       }}
     >
-      {items}
-
-      {/* 구분선 + 인쇄 버튼 */}
+      {/* 왼쪽 여백 — 서식 버튼을 가운데로 밀기 */}
       <div style={{ flex: 1 }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1px' }}>
+        {items}
+      </div>
+
+      {/* 구분선 + 인쇄 버튼 — 오른쪽 고정 */}
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
       {sep('sep-print')}
       <button
         title="인쇄"
@@ -325,6 +329,7 @@ export function FormatToolbar({ editorRef }: Props) {
       >
         인쇄
       </button>
+      </div>
     </div>
   )
 }
