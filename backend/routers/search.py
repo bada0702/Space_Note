@@ -1,3 +1,5 @@
+from itertools import combinations
+from collections import defaultdict
 from typing import Optional
 
 from fastapi import APIRouter
@@ -104,3 +106,47 @@ def entities(note_id: str):
             (note_id,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+_MAX_ROUTES_PER_NOTE = 20
+
+
+@router.get("/discoveries/routes")
+def discovery_routes():
+    """엔티티를 공유하는 노트 쌍을 항로(route)로 반환 — 성도의 연결선 렌더링용."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT note_id, norm, name FROM entities WHERE norm IS NOT NULL AND norm != ''"
+        ).fetchall()
+
+    norm_notes: dict[str, set[str]] = defaultdict(set)
+    norm_display: dict[str, str] = {}
+    for r in rows:
+        norm_notes[r["norm"]].add(r["note_id"])
+        norm_display.setdefault(r["norm"], r["name"])
+
+    pairs: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for norm, note_ids in norm_notes.items():
+        if len(note_ids) < 2:
+            continue
+        display = norm_display[norm]
+        for a, b in combinations(sorted(note_ids), 2):
+            pairs[(a, b)].add(display)
+
+    all_pairs_by_strength = []
+    for key in pairs:
+        all_pairs_by_strength.append((key, len(pairs[key])))
+    all_pairs_by_strength.sort(key=lambda x: x[1], reverse=True)
+
+    keep: set[tuple[str, str]] = set()
+    note_count: dict[str, int] = defaultdict(int)
+    for (a, b), strength in all_pairs_by_strength:
+        if note_count[a] < _MAX_ROUTES_PER_NOTE and note_count[b] < _MAX_ROUTES_PER_NOTE:
+            keep.add((a, b))
+            note_count[a] += 1
+            note_count[b] += 1
+
+    return [
+        {"note_a": a, "note_b": b, "shared_entities": sorted(pairs[(a, b)])}
+        for a, b in sorted(keep)
+    ]
