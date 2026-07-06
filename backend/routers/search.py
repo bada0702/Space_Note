@@ -40,23 +40,26 @@ def discoveries(note_id: Optional[str] = None):
     """
     with get_conn() as conn:
         if note_id:
+            # 표기 차이를 흡수한 정규화 키(norm)로 매칭
             mine = conn.execute(
-                "SELECT DISTINCT name FROM entities WHERE note_id = ?", (note_id,)
+                "SELECT DISTINCT norm FROM entities WHERE note_id = ?", (note_id,)
             ).fetchall()
-            names = [r["name"] for r in mine]
-            if not names:
+            norms = [r["norm"] for r in mine if r["norm"]]
+            if not norms:
                 return []
-            placeholders = ",".join("?" for _ in names)
+            placeholders = ",".join("?" for _ in norms)
             rows = conn.execute(
-                f"SELECT e.note_id AS note_id, e.name AS name, n.title AS title, "
+                f"SELECT e.note_id AS note_id, e.name AS name, e.norm AS norm, "
+                f"n.title AS title, "
                 f"n.category_id AS category_id, n.modified_at AS modified_at "
                 f"FROM entities e JOIN notes n ON n.id = e.note_id "
-                f"WHERE e.name IN ({placeholders}) AND e.note_id != ?",
-                (*names, note_id),
+                f"WHERE e.norm IN ({placeholders}) AND e.note_id != ?",
+                (*norms, note_id),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT e.note_id AS note_id, e.name AS name, n.title AS title, "
+                "SELECT e.note_id AS note_id, e.name AS name, e.norm AS norm, "
+                "n.title AS title, "
                 "n.category_id AS category_id, n.modified_at AS modified_at "
                 "FROM entities e JOIN notes n ON n.id = e.note_id"
             ).fetchall()
@@ -70,14 +73,15 @@ def discoveries(note_id: Optional[str] = None):
                 "title": r["title"],
                 "category_id": r["category_id"],
                 "modified_at": r["modified_at"],
-                "_entities": set(),
+                "_entities": {},
             },
         )
-        d["_entities"].add(r["name"])
+        # 같은 norm은 하나로 취급, 표시는 최초 등장 이름으로
+        d["_entities"].setdefault(r["norm"], r["name"])
 
     out = []
     for d in agg.values():
-        ents = sorted(d["_entities"])
+        ents = sorted(d["_entities"].values())
         out.append(
             {
                 "note_id": d["note_id"],
