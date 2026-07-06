@@ -990,6 +990,24 @@ export function StarMapCanvas() {
         mesh.rotation.y += od.selfRotY
       })
 
+      routeVisuals.forEach(rv => {
+        const a = starMeshes[rv.aIdx].position
+        const b = starMeshes[rv.bIdx].position
+        const points = buildRouteCurvePoints(a, b)
+        rv.line.geometry.setFromPoints(points)
+
+        rv.t += rv.dir * 0.006
+        if (rv.t >= 1) { rv.t = 1; rv.dir = -1 }
+        if (rv.t <= 0) { rv.t = 0; rv.dir = 1 }
+        const eased = rv.t * rv.t * (3 - 2 * rv.t) // smoothstep — 양 끝에서 감속
+
+        const curve = new THREE.CatmullRomCurve3(points)
+        const pos = curve.getPointAt(Math.min(0.999, Math.max(0.001, eased)))
+        const tangent = curve.getTangentAt(Math.min(0.999, Math.max(0.001, eased)))
+        rv.ship.position.copy(pos)
+        rv.ship.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent.normalize())
+      })
+
       composer.render()
     }
     animate()
