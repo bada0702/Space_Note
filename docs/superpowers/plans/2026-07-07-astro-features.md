@@ -1057,13 +1057,13 @@ git commit -m "feat(web): archive (블랙홀) action and collapsible archived se
 
 ---
 
-### Task 7: 성도 — 기항지 비콘 링 + 블랙홀 오브젝트
+### Task 7: 성도 — 기항지 비콘 링 + 블랙홀 오브젝트 + 위성(첨부파일)
 
 **Files:**
 - Modify: `src/components/StarMap/StarMapCanvas.tsx`
 
 **Interfaces:**
-- Consumes: `Note.is_favorite`, `useNotesStore.getState().archivedCount`.
+- Consumes: `Note.is_favorite`, `Note.content`, `useNotesStore.getState().archivedCount`.
 
 - [ ] **Step 1: 비콘 텍스처 헬퍼 추가** — `makeGlowTexture()` 함수 아래에 추가:
 
@@ -1169,10 +1169,56 @@ pointermove 핸들러의 `if (hit)` 블록 안, `shared` 처리 앞에 추가:
         }
 ```
 
-행성 툴팁에는 기항지 표시를 붙인다 — 기존 `setTooltip({ title: note.title, ... })` 줄 교체:
+행성 툴팁에는 기항지·첨부 수 표시를 붙인다 — 기존 `setTooltip({ title: note.title, ... })` 줄 교체:
 
 ```ts
-          setTooltip({ title: `${note.is_favorite ? '⚓ ' : ''}${note.title}`, x: e.clientX - rect.left, y: e.clientY - rect.top })
+          const att = attachmentCount(note.content)
+          setTooltip({
+            title: `${note.is_favorite ? '⚓ ' : ''}${note.title}${att > 0 ? ` · 📎${att}` : ''}`,
+            x: e.clientX - rect.left, y: e.clientY - rect.top,
+          })
+```
+
+- [ ] **Step 4.5: 위성(첨부파일) 렌더링** — 첨부가 있는 노트의 행성에 작은 위성을 공전시킨다.
+
+파일 상단(컴포넌트 밖, `makeBeaconTexture` 근처)에 첨부 수 헬퍼 추가:
+
+```ts
+function attachmentCount(content: string): number {
+  return (content.match(/\/attachments\/file\//g) ?? []).length
+}
+```
+
+행성 루프 준비부(`const beacons: ...` 옆)에 위성 목록 추가:
+
+```ts
+    const moons: { pivot: THREE.Object3D; speed: number }[] = []
+```
+
+행성 루프 안, 기항지 비콘 블록 다음에 추가:
+
+```ts
+        // 위성: 첨부파일이 있는 노트 (첨부 수만큼, 최대 3개)
+        const attCount = Math.min(3, attachmentCount(note.content))
+        for (let m = 0; m < attCount; m++) {
+          const pivot = new THREE.Object3D()
+          pivot.rotation.z = 0.4 + m * 0.9   // 위성마다 다른 궤도 기울기
+          pivot.rotation.y = m * 2.1          // 시작각 분산
+          const moon = new THREE.Mesh(
+            new THREE.SphereGeometry(planetR * 0.22, 12, 10),
+            new THREE.MeshStandardMaterial({ color: 0xb8bcc8, roughness: 0.95 }),
+          )
+          moon.position.x = planetR * (1.8 + m * 0.4)
+          pivot.add(moon)
+          mesh.add(pivot)
+          moons.push({ pivot, speed: 0.02 - m * 0.004 })
+        }
+```
+
+`animate()` 안(비콘 맥동 처리 옆)에 공전 추가:
+
+```ts
+      moons.forEach(mo => { mo.pivot.rotation.y += mo.speed })
 ```
 
 `animate()` 안(`sunMaterials.forEach` 다음)에 추가:
