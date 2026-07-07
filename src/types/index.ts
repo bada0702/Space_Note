@@ -15,6 +15,8 @@ export interface Note {
   tags: string[]
   word_count: number
   analysis_status: 'pending' | 'analyzed' | 'failed'
+  is_favorite: boolean
+  is_archived: boolean
   created_at: string
   modified_at: string
 }
@@ -71,6 +73,7 @@ export interface DiscoveryRoute {
   note_a: string
   note_b: string
   shared_entities: string[]
+  confirmed: boolean
 }
 
 export interface Entity {
