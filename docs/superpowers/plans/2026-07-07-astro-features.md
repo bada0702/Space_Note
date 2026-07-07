@@ -1179,6 +1179,16 @@ pointermove 핸들러의 `if (hit)` 블록 안, `shared` 처리 앞에 추가:
           })
 ```
 
+- [ ] **Step 4.4: 행성 궤도 안정화 (버그 수정, 사용자 보고 2026-07-07)** — 현재 행성은 노트 목록 순서(`modified_at` DESC)대로 안쪽 궤도부터 배치되어, 노트를 수정할 때마다 그 행성이 태양 쪽으로 점프하고 궤도가 전부 밀린다. 배치를 생성 시각 오름차순으로 고정한다 — 먼저 만든 노트가 안쪽, 나중에 만든 노트가 바깥쪽(수정해도 불변).
+
+행성 루프의 `const catNotes = visibleNotes.filter(n => n.category_id === cat.id)` 줄을 다음으로 교체 (항성 크기 계산부의 filter는 개수만 세므로 그대로 둔다):
+
+```ts
+      const catNotes = visibleNotes
+        .filter(n => n.category_id === cat.id)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+```
+
 - [ ] **Step 4.5: 위성(첨부파일) 렌더링** — 첨부가 있는 노트의 행성에 작은 위성을 공전시킨다.
 
 파일 상단(컴포넌트 밖, `makeBeaconTexture` 근처)에 첨부 수 헬퍼 추가:
