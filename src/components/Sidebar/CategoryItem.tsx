@@ -15,7 +15,7 @@ interface Props {
 }
 
 function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean; onSelect: () => void }) {
-  const { deleteNote } = useNotesStore()
+  const { deleteNote, toggleFavorite } = useNotesStore()
   const [hovered, setHovered] = useState(false)
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -42,7 +42,7 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           borderLeft: isActive ? '2px solid var(--accent-line)' : '2px solid transparent',
           paddingLeft: isActive ? '14px' : '16px',
-          paddingRight: hovered ? '28px' : '12px',
+          paddingRight: hovered ? '46px' : note.is_favorite ? '24px' : '12px',
           paddingTop: '3px',
           paddingBottom: '3px',
           display: 'block',
@@ -53,6 +53,25 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
       >
         {note.title}
       </button>
+      {(hovered || note.is_favorite) && (
+        <button
+          title={note.is_favorite ? '기항지 해제' : '기항지로 지정'}
+          onClick={e => { e.stopPropagation(); toggleFavorite(note.id) }}
+          style={{
+            position: 'absolute',
+            right: hovered ? '22px' : '6px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '10px',
+            color: note.is_favorite ? '#E8B23A' : 'var(--text-secondary)',
+            padding: '0 3px',
+            lineHeight: 1,
+            opacity: note.is_favorite ? 1 : 0.7,
+          }}
+        >
+          {note.is_favorite ? '★' : '☆'}
+        </button>
+      )}
       {hovered && (
         <button
           onClick={handleDelete}

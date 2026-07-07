@@ -4,9 +4,10 @@ import { useNotesStore } from '../../store/notesStore'
 import { useTheme } from '../Layout/ThemeProvider'
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { FormatToolbar, uploadAndInsert } from './FormatToolbar'
+import { formatDateTime } from '../../utils/dateFormat'
 
 export function NoteEditor() {
-  const { activeNote, saveNote, renameNote } = useNotesStore()
+  const { activeNote, saveNote, renameNote, toggleFavorite } = useNotesStore()
   const { theme } = useTheme()
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   const [titleValue, setTitleValue] = useState('')
@@ -66,27 +67,56 @@ export function NoteEditor() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* 제목 입력 */}
-      <input
-        ref={titleRef}
-        value={titleValue}
-        onChange={e => setTitleValue(e.target.value)}
-        onBlur={handleTitleBlur}
-        onKeyDown={handleTitleKeyDown}
-        placeholder="제목 없음"
-        style={{
-          width: '100%',
-          padding: '14px 48px 10px',
-          fontSize: '16px',
-          fontWeight: 600,
-          color: 'var(--text-primary)',
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          borderBottom: '1px solid var(--border)',
-          flexShrink: 0,
-        }}
-      />
+      {/* 제목 입력 + 기항지 토글 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', flexShrink: 0,
+        borderBottom: '1px solid var(--border)',
+      }}>
+        <input
+          ref={titleRef}
+          value={titleValue}
+          onChange={e => setTitleValue(e.target.value)}
+          onBlur={handleTitleBlur}
+          onKeyDown={handleTitleKeyDown}
+          placeholder="제목 없음"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '14px 8px 10px 48px',
+            fontSize: '16px',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+          }}
+        />
+        <button
+          title={activeNote.is_favorite ? '기항지 해제' : '기항지로 지정'}
+          onClick={() => toggleFavorite(activeNote.id)}
+          style={{
+            fontSize: '15px', padding: '10px 16px 6px', lineHeight: 1,
+            color: activeNote.is_favorite ? '#E8B23A' : 'var(--text-secondary)',
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            opacity: activeNote.is_favorite ? 1 : 0.55,
+          }}
+        >
+          {activeNote.is_favorite ? '★' : '☆'}
+        </button>
+      </div>
+
+      {/* 노트 메타데이터: 생성일·수정일 */}
+      <div style={{
+        display: 'flex', gap: 16, flexShrink: 0,
+        padding: '4px 16px 6px 48px',
+        fontSize: '10.5px', color: 'var(--text-secondary)', opacity: 0.75,
+        borderBottom: '1px solid var(--border)',
+        whiteSpace: 'nowrap', overflow: 'hidden',
+      }}>
+        <span>최초 생성일: {formatDateTime(activeNote.created_at)}</span>
+        <span>최근 수정일: {formatDateTime(activeNote.modified_at)}</span>
+      </div>
+
       {/* 서식 툴바 */}
       <FormatToolbar editorRef={editorRef} />
       {/* 본문 에디터 (파일 드래그앤드롭/붙여넣기로 첨부 업로드) */}

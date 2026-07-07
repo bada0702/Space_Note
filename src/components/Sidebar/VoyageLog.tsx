@@ -50,6 +50,7 @@ export function VoyageLog() {
 
   const notesByCategory = (catId: string) => notes.filter(n => n.category_id === catId)
   const uncategorized = notes.filter(n => !n.category_id)
+  const favorites = notes.filter(n => n.is_favorite)
 
   if (loading && categories.length === 0) {
     return (
@@ -75,6 +76,34 @@ export function VoyageLog() {
           + 은하
         </button>
       </div>
+
+      {favorites.length > 0 && (
+        <div className="mb-1 pb-1" style={{ borderBottom: '1px solid var(--glass-border)' }}>
+          <div className="px-3 py-1" style={{
+            fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase',
+            color: '#E8B23A', opacity: 0.85,
+          }}>
+            ⚓ 기항지
+          </div>
+          {favorites.map(note => (
+            <button
+              key={note.id}
+              className="w-full text-left truncate"
+              style={{
+                fontSize: '13px',
+                color: activeNote?.id === note.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                borderLeft: activeNote?.id === note.id ? '2px solid #E8B23A' : '2px solid transparent',
+                paddingLeft: activeNote?.id === note.id ? '14px' : '16px',
+                paddingRight: '12px', paddingTop: '3px', paddingBottom: '3px',
+                display: 'block', cursor: 'pointer',
+              }}
+              onClick={() => handleSelectNote(note.id)}
+            >
+              {note.title}
+            </button>
+          ))}
+        </div>
+      )}
 
       {showNewCat && (
         <div className="px-3 py-1">
