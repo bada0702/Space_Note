@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS notes (
   tags TEXT NOT NULL DEFAULT '[]',
   word_count INTEGER NOT NULL DEFAULT 0,
   analysis_status TEXT NOT NULL DEFAULT 'pending',
+  is_favorite INTEGER NOT NULL DEFAULT 0,
+  is_archived INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   modified_at TEXT NOT NULL
 );
@@ -37,6 +39,13 @@ CREATE TABLE IF NOT EXISTS tags (
   tag TEXT NOT NULL,
   norm TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS routes (
+  id TEXT PRIMARY KEY,
+  note_a TEXT NOT NULL,
+  note_b TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(note_a, note_b)
 );
 CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -62,6 +71,16 @@ def init_db() -> None:
         ).fetchall():
             conn.execute(
                 "UPDATE entities SET norm = ? WHERE id = ?", (norm_name(name), eid)
+            )
+        # 마이그레이션: notes 테이블에 즐겨찾기/보관 플래그 추가
+        note_cols = {r[1] for r in conn.execute("PRAGMA table_info(notes)")}
+        if "is_favorite" not in note_cols:
+            conn.execute(
+                "ALTER TABLE notes ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0"
+            )
+        if "is_archived" not in note_cols:
+            conn.execute(
+                "ALTER TABLE notes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
             )
         conn.commit()
     finally:
