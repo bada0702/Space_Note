@@ -905,6 +905,32 @@ hover 시 삭제 버튼 왼쪽에 별 버튼 추가. 즐겨찾기 별은 hover�
       </div>
 ```
 
+- [ ] **Step 3.5: 에디터에 생성일·수정일 표시 (추가 요청 2026-07-07)** — 제목 행 바로 아래에 노트 메타데이터 줄을 추가한다. `src/components/Editor/NoteEditor.tsx`:
+
+import에 추가:
+
+```ts
+import { formatDateTime } from '../../utils/dateFormat'
+```
+
+Step 3에서 만든 제목 flex 행(div)의 닫는 태그 바로 다음(= `<FormatToolbar ...>` 앞)에 삽입:
+
+```tsx
+      {/* 노트 메타데이터: 생성일·수정일 */}
+      <div style={{
+        display: 'flex', gap: 16, flexShrink: 0,
+        padding: '4px 16px 6px 48px',
+        fontSize: '10.5px', color: 'var(--text-secondary)', opacity: 0.75,
+        borderBottom: '1px solid var(--border)',
+        whiteSpace: 'nowrap', overflow: 'hidden',
+      }}>
+        <span>최초 생성일: {formatDateTime(activeNote.created_at)}</span>
+        <span>최근 수정일: {formatDateTime(activeNote.modified_at)}</span>
+      </div>
+```
+
+주의: Step 3의 제목 행 div에 있던 `borderBottom`은 이 메타데이터 줄로 이동한다 (제목 행 div의 `borderBottom: '1px solid var(--border)'` 스타일을 제거하고 위 메타데이터 div가 대신 가진다 — 헤더 하단 경계선이 중복되지 않게).
+
 - [ ] **Step 4: 빌드 확인**
 
 Run: `cd /var/www/html/Space_Note_v100 && npm run build`
