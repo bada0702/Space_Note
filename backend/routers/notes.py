@@ -24,6 +24,8 @@ def _now() -> str:
 def _row_to_note(row) -> dict:
     d = dict(row)
     d["tags"] = json.loads(d.get("tags") or "[]")
+    d["is_favorite"] = bool(d.get("is_favorite"))
+    d["is_archived"] = bool(d.get("is_archived"))
     return d
 
 
@@ -64,16 +66,18 @@ def _run_extraction(note_id: str, content: str) -> None:
 
 
 @router.get("/notes")
-def list_notes(category_id: Optional[str] = None):
+def list_notes(category_id: Optional[str] = None, archived: bool = False):
+    where = "is_archived = 1" if archived else "is_archived = 0"
     with get_conn() as conn:
         if category_id:
             rows = conn.execute(
-                "SELECT * FROM notes WHERE category_id = ? ORDER BY modified_at DESC",
+                f"SELECT * FROM notes WHERE {where} AND category_id = ? "
+                "ORDER BY modified_at DESC",
                 (category_id,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM notes ORDER BY modified_at DESC"
+                f"SELECT * FROM notes WHERE {where} ORDER BY modified_at DESC"
             ).fetchall()
     return [_row_to_note(r) for r in rows]
 
@@ -94,7 +98,8 @@ def analyze_all(bg: BackgroundTasks):
         rows = conn.execute(
             "SELECT id, content FROM notes "
             "WHERE TRIM(COALESCE(content, '')) != '' "
-            "AND analysis_status IN ('pending', 'failed')"
+            "AND analysis_status IN ('pending', 'failed') "
+            "AND is_archived = 0"
         ).fetchall()
         for r in rows:
             conn.execute(
@@ -163,28 +168,46 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
             raise HTTPException(status_code=404, detail="note not found")
         current = _row_to_note(row)
 
+        fields = body.model_dump(exclude_unset=True)
+        content_touched = any(
+            k in fields for k in ("title", "content", "category_id", "tags")
+        )
+
         new_title = body.title if body.title is not None else current["title"]
         new_content = body.content if body.content is not None else current["content"]
         new_category = (
-            body.category_id if "category_id" in body.model_dump(exclude_unset=True)
+            body.category_id if "category_id" in fields
             else current["category_id"]
         )
         new_tags = body.tags if body.tags is not None else current["tags"]
-        now = _now()
+        new_favorite = (
+            body.is_favorite if body.is_favorite is not None
+            else current["is_favorite"]
+        )
+        new_archived = (
+            body.is_archived if body.is_archived is not None
+            else current["is_archived"]
+        )
         word_count = len(new_content.split())
         content_changed = body.content is not None and new_content != current["content"]
         analysis_status = "pending" if content_changed else current["analysis_status"]
 
-        if new_title != current["title"]:
-            vault.delete_md(current["title"])
-        path = vault.write_md(new_title, new_content, new_tags)
+        # 플래그만 바꾸는 PATCH는 vault 파일과 modified_at을 건드리지 않는다
+        now = _now() if content_touched else current["modified_at"]
+        if content_touched:
+            if new_title != current["title"]:
+                vault.delete_md(current["title"])
+            path = vault.write_md(new_title, new_content, new_tags)
+        else:
+            path = current["path"]
 
         conn.execute(
             "UPDATE notes SET title = ?, content = ?, category_id = ?, tags = ?, "
-            "word_count = ?, path = ?, modified_at = ?, analysis_status = ? "
-            "WHERE id = ?",
+            "word_count = ?, path = ?, modified_at = ?, analysis_status = ?, "
+            "is_favorite = ?, is_archived = ? WHERE id = ?",
             (new_title, new_content, new_category, json.dumps(new_tags),
-             word_count, path, now, analysis_status, nid),
+             word_count, path, now, analysis_status,
+             int(new_favorite), int(new_archived), nid),
         )
         if content_changed:
             _sync_tags(conn, nid, new_content)

@@ -19,7 +19,8 @@ def search(q: str = ""):
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, title, content, category_id, modified_at FROM notes "
-            "WHERE title LIKE ? OR content LIKE ? ORDER BY modified_at DESC LIMIT 50",
+            "WHERE (title LIKE ? OR content LIKE ?) AND is_archived = 0 "
+            "ORDER BY modified_at DESC LIMIT 50",
             (like, like),
         ).fetchall()
     return [
@@ -64,7 +65,8 @@ def discoveries(note_id: Optional[str] = None):
                     f"'e:' || e.norm AS nkey, n.title AS title, "
                     f"n.category_id AS category_id, n.modified_at AS modified_at "
                     f"FROM entities e JOIN notes n ON n.id = e.note_id "
-                    f"WHERE e.norm IN ({placeholders}) AND e.note_id != ?",
+                    f"WHERE e.norm IN ({placeholders}) AND e.note_id != ? "
+                    f"AND n.is_archived = 0",
                     (*norms_e, note_id),
                 ).fetchall()
             if norms_t:
@@ -74,7 +76,8 @@ def discoveries(note_id: Optional[str] = None):
                     f"'t:' || t.norm AS nkey, n.title AS title, "
                     f"n.category_id AS category_id, n.modified_at AS modified_at "
                     f"FROM tags t JOIN notes n ON n.id = t.note_id "
-                    f"WHERE t.norm IN ({placeholders}) AND t.note_id != ?",
+                    f"WHERE t.norm IN ({placeholders}) AND t.note_id != ? "
+                    f"AND n.is_archived = 0",
                     (*norms_t, note_id),
                 ).fetchall()
         else:
@@ -82,12 +85,14 @@ def discoveries(note_id: Optional[str] = None):
                 "SELECT e.note_id AS note_id, e.name AS name, "
                 "'e:' || e.norm AS nkey, n.title AS title, "
                 "n.category_id AS category_id, n.modified_at AS modified_at "
-                "FROM entities e JOIN notes n ON n.id = e.note_id"
+                "FROM entities e JOIN notes n ON n.id = e.note_id "
+                "WHERE n.is_archived = 0"
             ).fetchall() + conn.execute(
                 "SELECT t.note_id AS note_id, t.tag AS name, "
                 "'t:' || t.norm AS nkey, n.title AS title, "
                 "n.category_id AS category_id, n.modified_at AS modified_at "
-                "FROM tags t JOIN notes n ON n.id = t.note_id"
+                "FROM tags t JOIN notes n ON n.id = t.note_id "
+                "WHERE n.is_archived = 0"
             ).fetchall()
 
     agg: dict[str, dict] = {}
@@ -174,10 +179,14 @@ def discovery_routes():
     """
     with get_conn() as conn:
         erows = conn.execute(
-            "SELECT note_id, norm, name FROM entities WHERE norm IS NOT NULL AND norm != ''"
+            "SELECT e.note_id AS note_id, e.norm AS norm, e.name AS name "
+            "FROM entities e JOIN notes n ON n.id = e.note_id "
+            "WHERE e.norm IS NOT NULL AND e.norm != '' AND n.is_archived = 0"
         ).fetchall()
         trows = conn.execute(
-            "SELECT note_id, norm, tag AS name FROM tags WHERE norm != ''"
+            "SELECT t.note_id AS note_id, t.norm AS norm, t.tag AS name "
+            "FROM tags t JOIN notes n ON n.id = t.note_id "
+            "WHERE t.norm != '' AND n.is_archived = 0"
         ).fetchall()
 
     norm_notes: dict[str, set[str]] = defaultdict(set)

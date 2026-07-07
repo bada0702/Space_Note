@@ -25,6 +25,8 @@ class NotePatch(BaseModel):
     content: Optional[str] = None
     category_id: Optional[str] = None
     tags: Optional[list[str]] = None
+    is_favorite: Optional[bool] = None
+    is_archived: Optional[bool] = None
 
 
 class SettingsPatch(BaseModel):
