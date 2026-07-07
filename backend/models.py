@@ -48,3 +48,8 @@ class ChatRequest(BaseModel):
     context_category_id: Optional[str] = None
     use_rag: bool = False
     use_wiki: bool = False
+
+
+class RouteCreate(BaseModel):
+    note_a: str
+    note_b: str

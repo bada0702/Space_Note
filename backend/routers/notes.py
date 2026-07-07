@@ -227,4 +227,5 @@ def delete_note(nid: str):
         conn.execute("DELETE FROM notes WHERE id = ?", (nid,))
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))
+        conn.execute("DELETE FROM routes WHERE note_a = ? OR note_b = ?", (nid, nid))
     return Response(status_code=204)

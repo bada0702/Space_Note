@@ -188,6 +188,11 @@ def discovery_routes():
             "FROM tags t JOIN notes n ON n.id = t.note_id "
             "WHERE t.norm != '' AND n.is_archived = 0"
         ).fetchall()
+        crows = conn.execute(
+            "SELECT r.note_a AS note_a, r.note_b AS note_b FROM routes r "
+            "JOIN notes na ON na.id = r.note_a AND na.is_archived = 0 "
+            "JOIN notes nb ON nb.id = r.note_b AND nb.is_archived = 0"
+        ).fetchall()
 
     norm_notes: dict[str, set[str]] = defaultdict(set)
     norm_display: dict[str, str] = {}
@@ -218,7 +223,16 @@ def discovery_routes():
         keys.sort(key=lambda k: len(pairs[k]), reverse=True)
         keep.update(keys[:_MAX_ROUTES_PER_NOTE])
 
+    confirmed = {(r["note_a"], r["note_b"]) for r in crows}
+    # 확정 항로는 발견 쌍에서 사라져도 유지한다 — 사용자의 명시적 선택이므로
+    # AI 재계산에 좌우되지 않는다.
+    all_keys = sorted(keep | confirmed)
     return [
-        {"note_a": a, "note_b": b, "shared_entities": sorted(pairs[(a, b)])}
-        for a, b in sorted(keep)
+        {
+            "note_a": a,
+            "note_b": b,
+            "shared_entities": sorted(pairs.get((a, b), set())),
+            "confirmed": (a, b) in confirmed,
+        }
+        for a, b in all_keys
     ]
