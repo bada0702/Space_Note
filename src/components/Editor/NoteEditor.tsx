@@ -70,7 +70,6 @@ export function NoteEditor() {
       {/* 제목 입력 + 기항지 토글 */}
       <div style={{
         display: 'flex', alignItems: 'center', flexShrink: 0,
-        borderBottom: '1px solid var(--border)',
       }}>
         <input
           ref={titleRef}
