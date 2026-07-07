@@ -15,7 +15,7 @@ interface Props {
 }
 
 function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean; onSelect: () => void }) {
-  const { deleteNote, toggleFavorite } = useNotesStore()
+  const { deleteNote, toggleFavorite, archiveNote } = useNotesStore()
   const [hovered, setHovered] = useState(false)
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -42,7 +42,7 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
           borderLeft: isActive ? '2px solid var(--accent-line)' : '2px solid transparent',
           paddingLeft: isActive ? '14px' : '16px',
-          paddingRight: hovered ? '46px' : note.is_favorite ? '24px' : '12px',
+          paddingRight: hovered ? '62px' : note.is_favorite ? '24px' : '12px',
           paddingTop: '3px',
           paddingBottom: '3px',
           display: 'block',
@@ -59,7 +59,7 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           onClick={e => { e.stopPropagation(); toggleFavorite(note.id) }}
           style={{
             position: 'absolute',
-            right: hovered ? '22px' : '6px',
+            right: hovered ? '38px' : '6px',
             top: '50%',
             transform: 'translateY(-50%)',
             fontSize: '10px',
@@ -70,6 +70,27 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           }}
         >
           {note.is_favorite ? '★' : '☆'}
+        </button>
+      )}
+      {hovered && (
+        <button
+          title="블랙홀로 보내기 (보관)"
+          onClick={e => { e.stopPropagation(); archiveNote(note.id) }}
+          style={{
+            position: 'absolute',
+            right: '22px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            fontSize: '10px',
+            color: 'var(--text-secondary)',
+            padding: '0 3px',
+            lineHeight: 1,
+            opacity: 0.7,
+          }}
+          onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.opacity = '1')}
+          onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.opacity = '0.7')}
+        >
+          ◐
         </button>
       )}
       {hovered && (

@@ -7,15 +7,18 @@ const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#
 
 export function VoyageLog() {
   const { categories, fetchCategories, addCategory, loading } = useCategoriesStore()
-  const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote } = useNotesStore()
+  const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote,
+    archivedNotes, archivedCount, fetchArchived, restoreNote, deleteNote } = useNotesStore()
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catError, setCatError] = useState('')
   const [uncatDragOver, setUncatDragOver] = useState(false)
+  const [blackholeOpen, setBlackholeOpen] = useState(false)
 
   useEffect(() => {
     fetchCategories().catch(console.error)
     fetchNotes().catch(console.error)
+    fetchArchived().catch(console.error)
   }, [])
 
   const handleAddCategory = async () => {
@@ -209,6 +212,56 @@ export function VoyageLog() {
             >
               {note.title}
             </button>
+          ))}
+        </div>
+      )}
+
+      {archivedCount > 0 && (
+        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+          <button
+            className="w-full text-left px-3 py-1 flex items-center gap-1.5"
+            style={{
+              fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase',
+              color: 'var(--text-secondary)', opacity: 0.7,
+            }}
+            onClick={() => {
+              setBlackholeOpen(o => !o)
+              if (!blackholeOpen) fetchArchived().catch(console.error)
+            }}
+          >
+            <span>🕳 블랙홀 ({archivedCount})</span>
+            <span className="ml-auto" style={{ fontSize: '9px' }}>{blackholeOpen ? '▾' : '▸'}</span>
+          </button>
+          {blackholeOpen && archivedNotes.map(note => (
+            <div key={note.id} className="flex items-center" style={{ paddingRight: '8px' }}>
+              <span
+                className="flex-1 truncate"
+                style={{
+                  fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6,
+                  paddingLeft: '16px', paddingTop: '3px', paddingBottom: '3px',
+                }}
+              >
+                {note.title}
+              </span>
+              <button
+                title="복원"
+                onClick={() => restoreNote(note.id)}
+                style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 4px' }}
+              >
+                ↺
+              </button>
+              <button
+                title="영구 삭제"
+                onClick={() => {
+                  if (confirm(`"${note.title}" 노트를 영구 삭제할까요? (.md 파일도 삭제됩니다)`)) {
+                    deleteNote(note.id).then(() => fetchArchived()).catch(console.error)
+                  }
+                }}
+                style={{ fontSize: '10px', color: '#C92A2A', padding: '0 4px' }}
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
       )}
