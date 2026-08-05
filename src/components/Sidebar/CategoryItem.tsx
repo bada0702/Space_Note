@@ -5,24 +5,51 @@ import { useCategoriesStore } from '../../store/categoriesStore'
 
 export const NOTE_DRAG_MIME = 'application/x-spacenote-note-id'
 
+const CATEGORY_COLOR_PRESETS = [
+  '#F0635A', '#F2994A', '#E8B23A', '#4C9A6A',
+  '#3AA0A0', '#4C6EF5', '#9775FA', '#E64980',
+]
+
 interface Props {
   category: Category
   notes: Note[]
   onSelectNote: (id: string) => void
+  onDoubleClickNote: (id: string) => void
   activeNoteId?: string
   onCreateNote: (categoryId: string) => void
   onDropNote: (noteId: string) => void
 }
 
-function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean; onSelect: () => void }) {
+function NoteItem({
+  note,
+  isActive,
+  onSelect,
+  onDoubleClick
+}: {
+  note: Note
+  isActive: boolean
+  onSelect: () => void
+  onDoubleClick: () => void
+}) {
   const { deleteNote, toggleFavorite, archiveNote } = useNotesStore()
   const [hovered, setHovered] = useState(false)
+  const [lastClick, setLastClick] = useState(0)
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirm(`"${note.title}" 노트를 삭제할까요?`)) {
       deleteNote(note.id)
     }
+  }
+
+  const handleClick = () => {
+    const now = Date.now()
+    if (now - lastClick < 300) {
+      onDoubleClick()
+    } else {
+      onSelect()
+    }
+    setLastClick(now)
   }
 
   return (
@@ -48,7 +75,7 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
           display: 'block',
           cursor: 'grab',
         }}
-        onClick={onSelect}
+        onClick={handleClick}
         onKeyDown={e => e.key === 'Enter' && onSelect()}
       >
         {note.title}
@@ -117,14 +144,26 @@ function NoteItem({ note, isActive, onSelect }: { note: Note; isActive: boolean;
   )
 }
 
-export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCreateNote, onDropNote }: Props) {
+export function CategoryItem({ category, notes, onSelectNote, onDoubleClickNote, activeNoteId, onCreateNote, onDropNote }: Props) {
   const [open, setOpen] = useState(true)
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [nameValue, setNameValue] = useState(category.name)
   const [dragOver, setDragOver] = useState(false)
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const { setTab, setStarMapFilter } = useNotesStore()
-  const { updateCategory } = useCategoriesStore()
+  const { updateCategory, deleteCategory } = useCategoriesStore()
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm(`"${category.name}" 은하(카테고리)를 삭제할까요?\n은하에 속한 노트들은 보존됩니다.`)) {
+      try {
+        await deleteCategory(category.id)
+      } catch (err) {
+        console.error('category delete failed:', err)
+      }
+    }
+  }
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(NOTE_DRAG_MIME)) return
@@ -162,6 +201,16 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
     }
   }
 
+  const pickColor = async (color: string) => {
+    setColorPickerOpen(false)
+    if (color === category.color) return
+    try {
+      await updateCategory(category.id, { color })
+    } catch (e) {
+      console.error('category color change failed:', e)
+    }
+  }
+
   return (
     <div className="mb-1">
       <div
@@ -181,7 +230,48 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
       >
-        <span style={{ color: category.color, fontSize: '8px' }}>●</span>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <button
+            type="button"
+            title="카테고리 색상 변경"
+            onClick={e => { e.stopPropagation(); setColorPickerOpen(o => !o) }}
+            style={{ color: category.color ?? 'var(--text-secondary)', fontSize: '8px', lineHeight: 1, cursor: 'pointer' }}
+          >
+            ●
+          </button>
+          {colorPickerOpen && (
+            <>
+              <div
+                style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+                onClick={e => { e.stopPropagation(); setColorPickerOpen(false) }}
+              />
+              <div
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: 'absolute', top: '14px', left: 0, zIndex: 11,
+                  display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
+                  padding: '6px', borderRadius: '4px',
+                  background: 'var(--bg-panel)', border: '1px solid var(--border)',
+                  boxShadow: 'var(--glass-shadow)',
+                }}
+              >
+                {CATEGORY_COLOR_PRESETS.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    title={c}
+                    onClick={() => pickColor(c)}
+                    style={{
+                      width: '14px', height: '14px', borderRadius: '50%',
+                      background: c, cursor: 'pointer',
+                      border: c === category.color ? '2px solid var(--text-primary)' : '1px solid var(--border)',
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </span>
         {editing ? (
           <input
             autoFocus
@@ -206,13 +296,24 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
           <span>{category.name}</span>
         )}
         {!editing && hovered && (
-          <button
-            title="이름 수정"
-            onClick={startEdit}
-            style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 2px', lineHeight: 1 }}
-          >
-            ✎
-          </button>
+          <>
+            <button
+              title="이름 수정"
+              onClick={startEdit}
+              style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 2px', lineHeight: 1 }}
+            >
+              ✎
+            </button>
+            <button
+              title="은하 삭제"
+              onClick={handleDelete}
+              style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 2px', lineHeight: 1 }}
+              onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
+              onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)')}
+            >
+              ✕
+            </button>
+          </>
         )}
         <button
           title="성도에서 이 은하 보기"
@@ -233,6 +334,7 @@ export function CategoryItem({ category, notes, onSelectNote, activeNoteId, onCr
               note={note}
               isActive={activeNoteId === note.id}
               onSelect={() => onSelectNote(note.id)}
+              onDoubleClick={() => onDoubleClickNote(note.id)}
             />
           ))}
           {notes.length === 0 && (

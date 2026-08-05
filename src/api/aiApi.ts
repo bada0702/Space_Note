@@ -4,7 +4,8 @@ import { API_BASE, authHeaders, apiFetch } from './client'
 export const aiApi = {
   getSettings: (): Promise<AISettings> =>
     apiFetch<AISettings>('/ai/settings'),
-
+  getOllamaModels: (): Promise<{name: string}[]> =>
+    apiFetch<{name: string}[]>('/ai/models/ollama'),
   patchSettings: async (data: Partial<AISettings>): Promise<void> => {
     await apiFetch('/ai/settings', { method: 'PATCH', body: JSON.stringify(data) })
   },

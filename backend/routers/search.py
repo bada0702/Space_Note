@@ -112,7 +112,7 @@ def discoveries(note_id: Optional[str] = None):
 
     out = []
     for d in agg.values():
-        ents = sorted(d["_entities"].values())
+        ents = sorted(list(set(d["_entities"].values())))
         out.append(
             {
                 "note_id": d["note_id"],
@@ -167,7 +167,7 @@ def notes_for_tag(tag: str):
     return [dict(r) for r in rows]
 
 
-_MAX_ROUTES_PER_NOTE = 20
+_MAX_ROUTES_PER_NOTE = 5
 
 
 @router.get("/discoveries/routes")

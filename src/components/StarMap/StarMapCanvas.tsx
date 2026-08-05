@@ -23,12 +23,16 @@ interface OrbitData {
   speed: number
   angle: number
   selfRotY: number
+  isRogue?: boolean
+  velocity?: THREE.Vector3
+  mass?: number
+  planetR?: number
 }
 
 interface SunData {
   mesh: THREE.Mesh
-  glow: THREE.Sprite
-  glowBase: number
+  glow?: THREE.Sprite
+  glowBase?: number
   phase: number
 }
 
@@ -109,16 +113,40 @@ void main() {
   gl_FragColor = vec4(uColor, rim * 0.55);
 }`
 
+// 궤도 반경: 간격을 누적해 계산 — 바깥으로 갈수록 간격이 커지고(축소되지 않고),
+// 각 간격에 불규칙한 요철을 더해 완전히 매끈한 등간격으로 보이지 않게 한다.
+// 노트가 최대 800개까지 있을 수 있으므로(catNotes.slice(0, 800)), 누적 반경이
+// 카메라 far plane(25000)을 넘지 않도록 간격 증가폭을 억제해야 한다 — 이전 계수
+// (floor 38, base 55 + k^0.6*14)는 800개 누적 시 반경이 40만 단위까지 폭증해
+// 카메라가 은하 전체를 far plane 밖에 두고 아무것도 렌더링하지 못하는 원인이었다.
+function orbitRadius(sunR: number, j: number): number {
+  // 첫 궤도는 태양 표면에 바짝 붙이고(스케일 배율 미적용), 노트가 쌓이며
+  // 벌어지는 누적 간격만 ×10 스케일을 적용해 대형 성계에서도 far plane을
+  // 넘지 않게 한다 — 그래야 태양 크기와 무관하게 행성들이 태양 가까이 모인다.
+  const baseGap = 100
+  let acc = 0
+  for (let k = 1; k <= j; k++) {
+    // k가 작을 때는 간격을 넓게 퍼뜨리고, k가 커질수록 증가율을 낮추어
+    // 대형 성계(최대 800개)도 카메라 far plane(25000) 안쪽 범위(1만 이하)에 유지되도록 함
+    const growth = 65.0 / (1.0 + Math.pow(k, 0.48)) + 6.0
+    const irregular = 4.0 * Math.sin(k * 2.63) + 2.5 * Math.sin(k * 0.97 + 1.3)
+    acc += Math.max(8, growth + irregular)
+  }
+  return sunR + baseGap + acc * 10
+}
+
 // 은하계(항성계)의 최대 궤도 반경: 궤도 배치 공식과 동일하게 유지할 것
 function systemRadius(noteCount: number): number {
-  const sunR = Math.max(5, 4 + noteCount * 0.25)
-  return noteCount > 0 ? sunR + 16 + (noteCount - 1) * 12 : 60
+  const displayCount = Math.min(noteCount, 800)
+  if (displayCount === 0) return 600
+  const sunR = 500.0
+  return orbitRadius(sunR, displayCount - 1) + 400
 }
 
 // 항성 위치를 동적으로 계산: 모든 쌍이 R_i + R_j + MARGIN 이상 떨어지도록
 // 기존 STAR_POSITIONS의 방향만 쓰고 거리를 늘려가며 배치한다.
 function computeStarPositions(counts: number[]): THREE.Vector3[] {
-  const MARGIN = 120
+  const MARGIN = 1200
   const radii = counts.map(systemRadius)
   const out: THREE.Vector3[] = []
   for (let i = 0; i < counts.length; i++) {
@@ -135,7 +163,7 @@ function computeStarPositions(counts: number[]): THREE.Vector3[] {
         if (placed.distanceTo(out[j]) < radii[i] + radii[j] + MARGIN) { ok = false; break }
       }
       if (ok) break
-      d += 60
+      d += 600
       placed = dir.clone().multiplyScalar(d)
     }
     out.push(placed)
@@ -222,7 +250,7 @@ type PlanetKind = {
 
 const PLANET_KINDS: PlanetKind[] = [
   {
-    name: 'jupiter', size: 4.7, ring: null,
+    name: 'jupiter', size: 40.0, ring: null,
     paint: (c, w, h) => {
       paintBands(c, w, h, [
         [216, 176, 132], [240, 222, 188], [198, 150, 110], [232, 210, 178],
@@ -236,19 +264,19 @@ const PLANET_KINDS: PlanetKind[] = [
     },
   },
   {
-    name: 'saturn', size: 4.3, ring: 'saturn',
+    name: 'saturn', size: 34.0, ring: 'saturn',
     paint: (c, w, h) => paintBands(c, w, h, [
       [228, 206, 158], [240, 226, 190], [214, 188, 140], [236, 220, 182], [206, 178, 130],
     ], 150, 0.12),
   },
   {
-    name: 'venus', size: 3.1, ring: null,
+    name: 'venus', size: 20.0, ring: null,
     paint: (c, w, h) => paintBands(c, w, h, [
       [232, 206, 150], [246, 228, 184], [220, 188, 132], [240, 218, 168], [226, 198, 144],
     ], 320, 0.22),
   },
   {
-    name: 'earth', size: 3.1, ring: null,
+    name: 'earth', size: 20.0, ring: null,
     paint: (c, w, h) => {
       // 바다
       c.fillStyle = rgb(28, 64, 120)
@@ -263,7 +291,7 @@ const PLANET_KINDS: PlanetKind[] = [
     },
   },
   {
-    name: 'mars', size: 2.6, ring: null,
+    name: 'mars', size: 16.0, ring: null,
     paint: (c, w, h) => {
       paintBands(c, w, h, [[196, 108, 66], [176, 92, 56], [206, 122, 78], [168, 84, 52]], 80, 0.1)
       blobs(c, w, h, 26, [128, 62, 40], w * 0.02, w * 0.06, 0.5)
@@ -271,7 +299,7 @@ const PLANET_KINDS: PlanetKind[] = [
     },
   },
   {
-    name: 'neptune', size: 3.7, ring: null,
+    name: 'neptune', size: 26.0, ring: null,
     paint: (c, w, h) => {
       paintBands(c, w, h, [[42, 78, 168], [60, 104, 196], [38, 70, 150], [70, 116, 206]], 90, 0.1)
       // 대흑점
@@ -282,13 +310,13 @@ const PLANET_KINDS: PlanetKind[] = [
     },
   },
   {
-    name: 'uranus', size: 3.6, ring: 'uranus',
+    name: 'uranus', size: 24.0, ring: 'uranus',
     paint: (c, w, h) => paintBands(c, w, h, [
       [150, 214, 214], [180, 230, 226], [136, 200, 202], [172, 224, 220],
     ], 50, 0.06),
   },
   {
-    name: 'mercury', size: 2.3, ring: null,
+    name: 'mercury', size: 14.0, ring: null,
     paint: (c, w, h) => {
       paintBands(c, w, h, [[126, 116, 104], [150, 140, 126], [110, 102, 92]], 40, 0.08)
       blobs(c, w, h, 40, [80, 74, 66], w * 0.008, w * 0.03, 0.5)
@@ -477,7 +505,7 @@ export function StarMapCanvas() {
     // ── Scene ────────────────────────────────────────────────
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(0x02030a)
-    scene.fog = new THREE.FogExp2(0x02030a, 0.0004)
+    scene.fog = new THREE.FogExp2(0x02030a, 0.00004)
 
     // 카메라 초점: 전체 뷰는 모든 은하의 중심점(특정 은하에 치우치지 않게)
     let lookTarget = new THREE.Vector3(0, 0, 0)
@@ -486,7 +514,7 @@ export function StarMapCanvas() {
       lookTarget.divideScalar(starPositions.length)
     }
     let initCamR = Math.max(
-      400,
+      4000,
       starPositions.reduce(
         (m, p, i) => Math.max(m, p.distanceTo(lookTarget) + systemRadius(noteCounts[i])),
         0,
@@ -497,15 +525,15 @@ export function StarMapCanvas() {
       if (ci >= 0) {
         // 선택한 은하계를 화면 중앙에 두고, 은하 전체가 들어오도록 거리 조정
         lookTarget = starPositions[ci].clone()
-        initCamR = Math.max(200, systemRadius(noteCounts[ci]) * 2.4)
+        initCamR = Math.max(2000, systemRadius(noteCounts[ci]) * 2.4)
       } else {
-        initCamR = 220
+        initCamR = 2200
       }
     }
-    const maxZoom = Math.max(1200, initCamR * 2)
+    const maxZoom = Math.max(12000, initCamR * 2)
 
-    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 6000)
-    camera.position.set(lookTarget.x, lookTarget.y + 80, lookTarget.z + initCamR)
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 250000)
+    camera.position.set(lookTarget.x, lookTarget.y + 800, lookTarget.z + initCamR)
     camera.lookAt(lookTarget)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -556,20 +584,30 @@ export function StarMapCanvas() {
         depthWrite: false, blending: THREE.AdditiveBlending,
       })
       const spr = new THREE.Sprite(mat)
-      spr.position.copy(pos)
-      spr.scale.setScalar(sc)
+      spr.position.copy(pos.clone().multiplyScalar(10))
+      spr.scale.setScalar(sc * 10)
       scene.add(spr)
     })
 
     // ── 별하늘 (색·크기 다양 + 밝은 별 레이어) ────────────────
+    // 은하들이 카테고리 수에 따라 원점에서 멀리 흩어질 수 있어(computeStarPositions),
+    // 별 배경을 원점 기준 고정 큐브로 두면 원점에서 먼 은하를 보는 중엔 배경이
+    // 텅 비어 보인다 — 지금 카메라가 바라보는 lookTarget을 중심으로 생성해
+    // 어떤 은하를 보든 주위에 별이 둘러싸도록 한다.
     function buildStars(count: number, spread: number, size: number, opacity: number, bright: boolean) {
       const pos = new Float32Array(count * 3)
       const col = new Float32Array(count * 3)
       const tint = new THREE.Color()
       for (let i = 0; i < count; i++) {
-        pos[i * 3] = (Math.random() - 0.5) * spread
-        pos[i * 3 + 1] = (Math.random() - 0.5) * spread
-        pos[i * 3 + 2] = (Math.random() - 0.5) * spread
+        // 구면 좌표로 뽑아서 둥글게 퍼지게 한다 — x/y/z를 각각 독립으로 뽑으면
+        // 정육면체 모양 경계가 그대로 드러난다(예전엔 fog·감쇠가 가려줬지만
+        // 지금은 배경별에 그 둘을 껐으므로 각진 경계가 눈에 보인다).
+        const rad = (spread / 2) * Math.cbrt(Math.random())
+        const theta = Math.random() * Math.PI * 2
+        const phi = Math.acos(Math.random() * 2 - 1)
+        pos[i * 3] = lookTarget.x + rad * Math.sin(phi) * Math.cos(theta)
+        pos[i * 3 + 1] = lookTarget.y + rad * Math.sin(phi) * Math.sin(theta)
+        pos[i * 3 + 2] = lookTarget.z + rad * Math.cos(phi)
         const r = Math.random()
         if (r < 0.7) tint.setRGB(1, 1, 1)                   // 백색
         else if (r < 0.85) tint.setRGB(0.7, 0.8, 1)         // 청백색
@@ -580,32 +618,61 @@ export function StarMapCanvas() {
         col[i * 3 + 1] = tint.g * v
         col[i * 3 + 2] = tint.b * v
       }
+      const baseCol = col.slice() // 반짝임 배율을 곱할 원본 밝기 (매 프레임 여기서부터 다시 계산)
+      // 별마다 다른 위상·주기를 줘서 다 같이 반짝이지 않고 제각각 가끔 반짝이게 한다
+      const twinklePhase = new Float32Array(count)
+      const twinkleSpeed = new Float32Array(count)
+      for (let i = 0; i < count; i++) {
+        twinklePhase[i] = Math.random() * Math.PI * 2
+        twinkleSpeed[i] = 1.5 + Math.random() * 2.5
+      }
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-      geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+      const colorAttr = new THREE.BufferAttribute(col, 3)
+      geo.setAttribute('color', colorAttr)
       const mat = new THREE.PointsMaterial({
-        size, sizeAttenuation: true, vertexColors: true,
+        // 배경별은 우주의 무한히 먼 배경이라는 개념이라 카메라 거리와
+        // 무관하게 항상 같은 화면상 크기·밝기여야 한다. sizeAttenuation을
+        // 켜두면 줌아웃해서 카메라~별 거리가 멀어질수록 점이 서브픽셀로
+        // 작아지고, fog를 켜두면 같은 이유로 안개에 완전히 가려져 축소했을
+        // 때만 배경별이 사라지는 문제가 있었다.
+        size, sizeAttenuation: false, vertexColors: true,
         map: starTex, transparent: true, opacity,
-        depthWrite: false, blending: THREE.AdditiveBlending,
+        depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
       })
       const pts = new THREE.Points(geo, mat)
       scene.add(pts)
-      return mat
+      return { mat, col, baseCol, colorAttr, twinklePhase, twinkleSpeed, count }
     }
-    buildStars(4200, 3000, 0.7, 0.75, false)
-    const brightStarMat = buildStars(220, 2800, 2.1, 0.95, true)
+    const starLayer = buildStars(1800, 150000, 0.8, 0.75, false)
+    const brightStarLayer = buildStars(100, 140000, 1.6, 0.95, true)
+
+    // 별 반짝임: 대부분은 기본 밝기 근처에 머물다가 가끔 순간적으로 밝기가
+    // 튀는 느낌을 내려고 sin을 높은 지수로 눌러(sin^6) 스파이크를 좁고
+    // 뜸하게 만든다. 별마다 위상·속도가 달라 한꺼번에 반짝이지 않는다.
+    function updateTwinkle(layer: typeof starLayer, t: number) {
+      const { col, baseCol, colorAttr, twinklePhase, twinkleSpeed, count } = layer
+      for (let i = 0; i < count; i++) {
+        const s = Math.max(0, Math.sin(t * twinkleSpeed[i] + twinklePhase[i]))
+        const twinkle = 1 + Math.pow(s, 6) * 2.2
+        col[i * 3] = baseCol[i * 3] * twinkle
+        col[i * 3 + 1] = baseCol[i * 3 + 1] * twinkle
+        col[i * 3 + 2] = baseCol[i * 3 + 2] * twinkle
+      }
+      colorAttr.needsUpdate = true
+    }
 
     // ── 은하수 밴드: 기울어진 원환에 밀집된 파티클 띠 ────────
     function buildMilkyWay() {
-      const count = 9000
+      const count = 3000
       const pos = new Float32Array(count * 3)
       const col = new Float32Array(count * 3)
       const euler = new THREE.Euler(0.5, 0, 0.35)
       const v = new THREE.Vector3()
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2
-        const r = 1500 + (Math.random() - 0.5) * 700
-        const spread = Math.pow(Math.random(), 2) * 260 * (Math.random() < 0.5 ? 1 : -1)
+        const r = (1500 + (Math.random() - 0.5) * 700) * 10
+        const spread = Math.pow(Math.random(), 2) * 2600 * (Math.random() < 0.5 ? 1 : -1)
         v.set(Math.cos(a) * r, spread, Math.sin(a) * r).applyEuler(euler)
         pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z
         const w = 0.45 + Math.random() * 0.55
@@ -615,9 +682,13 @@ export function StarMapCanvas() {
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
       const mat = new THREE.PointsMaterial({
-        size: 1.6, sizeAttenuation: true, vertexColors: true, map: starTex,
+        // 배경별과 달리 은하수 밴드는 원점에 고정된 국지적 장식이라, fog를
+        // 꺼두면 어느 은하를 보든 늘 또렷한 고리 하나가 떠 있는 것처럼
+        // 보인다(마치 운석 띠처럼). 가까이 있을 때만 은은히 보이도록 안개는
+        // 다시 켠다.
+        size: 1.4, sizeAttenuation: false, vertexColors: true, map: starTex,
         transparent: true, opacity: 0.35, depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.AdditiveBlending, fog: true,
       })
       scene.add(new THREE.Points(geo, mat))
     }
@@ -636,7 +707,7 @@ export function StarMapCanvas() {
         const a = arm + t * Math.PI * 3.2 + (Math.random() - 0.5) * 0.5
         const r = 8 + t * maxR
         pos[i * 3] = center.x + Math.cos(a) * r
-        pos[i * 3 + 1] = center.y + (Math.random() - 0.5) * 6
+        pos[i * 3 + 1] = center.y + (Math.random() - 0.5) * 60
         pos[i * 3 + 2] = center.z + Math.sin(a) * r
         tmp.copy(color).lerp(white, t * 0.6)
         col[i * 3] = tmp.r; col[i * 3 + 1] = tmp.g; col[i * 3 + 2] = tmp.b
@@ -645,9 +716,9 @@ export function StarMapCanvas() {
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
       const mat = new THREE.PointsMaterial({
-        size: 1.1, sizeAttenuation: true, vertexColors: true, map: starTex,
+        size: 1.0, sizeAttenuation: false, vertexColors: true, map: starTex,
         transparent: true, opacity: 0.3, depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.AdditiveBlending, fog: false,
       })
       scene.add(new THREE.Points(geo, mat))
     }
@@ -664,7 +735,7 @@ export function StarMapCanvas() {
       const color = new THREE.Color(cat.color)
       const noteCount = visibleNotes.filter(n => n.category_id === cat.id).length
 
-      const sunR = Math.max(5, 4 + noteCount * 0.25)
+      const sunR = 500.0
 
       const sunMat = new THREE.ShaderMaterial({
         vertexShader: SUN_VERT,
@@ -726,6 +797,10 @@ export function StarMapCanvas() {
     const orbits: OrbitData[] = []
     const noteIds: string[] = []
     const spinners: THREE.Object3D[] = []
+    // 행성이 멀리서 1px 미만으로 작아져 안 보이는 문제 방지용 —
+    // starMeshes/spinners/orbits와 같은 인덱스로 쌓아 애니메이션 루프에서
+    // 위치를 같이 갱신하는 화면상 고정 크기 점 마커의 색상 버퍼
+    const markerColors: number[] = []
 
     // 카테고리별로 노트를 묶어 같은 평면에서 동심원 궤도(태양계 형태)로 배치
     let kindCounter = 0
@@ -733,10 +808,10 @@ export function StarMapCanvas() {
       const ci = categories.findIndex(c => c.id === cat.id)
       const center = starPositions[ci].clone()
       const catColor = new THREE.Color(cat.color)
-      const catNotes = visibleNotes.filter(n => n.category_id === cat.id)
+      const catNotes = visibleNotes.filter(n => n.category_id === cat.id).slice(0, 800)
       if (catNotes.length === 0) return
 
-      const sunR = Math.max(5, 4 + catNotes.length * 0.25)
+      const sunR = 500.0
 
       // 이 항성계의 황도면(카테고리마다 다른 기울기로 전체가 평평해지지 않게)
       const tiltX = 0.12 + (ci % 4) * 0.14
@@ -764,20 +839,83 @@ export function StarMapCanvas() {
         )
         mesh.rotation.z = (j % 5) * 0.12 - 0.2 // 자전축 기울기
 
-        // 고리
-        if (kind.ring) {
+        // 고리 구성: 금성같은 고리가 있는 행성은 글의 내용이 1000줄 넘어가면 생겨야한다 2000줄이면 고리가 2줄
+        const lineCount = note.content ? note.content.split('\n').length : 0
+        const isVenus = kind.name === 'venus'
+        const hasDefaultRing = !!kind.ring
+        const ringsToRender: { inner: number, outer: number, opacity: number, rotationX: number }[] = []
+
+        if (hasDefaultRing) {
           const rInner = planetR * 1.4
           const rOuter = planetR * (kind.ring === 'saturn' ? 2.3 : 1.9)
+          ringsToRender.push({
+            inner: rInner,
+            outer: rOuter,
+            opacity: kind.ring === 'saturn' ? 0.9 : 0.5,
+            rotationX: kind.ring === 'saturn' ? Math.PI / 2 - 0.45 : 0.25
+          })
+        } else if (isVenus) {
+          if (lineCount >= 2000) {
+            ringsToRender.push({
+              inner: planetR * 1.4,
+              outer: planetR * 1.75,
+              opacity: 0.8,
+              rotationX: 0.25
+            })
+            ringsToRender.push({
+              inner: planetR * 1.85,
+              outer: planetR * 2.2,
+              opacity: 0.6,
+              rotationX: 0.25
+            })
+          } else if (lineCount >= 1000) {
+            ringsToRender.push({
+              inner: planetR * 1.4,
+              outer: planetR * 1.9,
+              opacity: 0.7,
+              rotationX: 0.25
+            })
+          }
+        }
+
+        ringsToRender.forEach(rInfo => {
           const ring = new THREE.Mesh(
-            makeRingGeometry(rInner, rOuter),
+            makeRingGeometry(rInfo.inner, rInfo.outer),
             new THREE.MeshBasicMaterial({
               map: ringTex, transparent: true,
-              opacity: kind.ring === 'saturn' ? 0.9 : 0.5,
+              opacity: rInfo.opacity,
               side: THREE.DoubleSide, depthWrite: false,
             }),
           )
-          ring.rotation.x = kind.ring === 'saturn' ? Math.PI / 2 - 0.45 : 0.25
+          ring.rotation.x = rInfo.rotationX
           mesh.add(ring)
+        })
+
+        // 위성 구성 (첨부파일이나 링크가 있는 노트)
+        const hasAttachmentOrLink = note.content && (
+          /!?\[.*?\]\(.*?\)/.test(note.content) ||
+          /https?:\/\//.test(note.content)
+        )
+        if (hasAttachmentOrLink) {
+          const satGroup = new THREE.Group()
+          mesh.add(satGroup)
+
+          const satR = planetR * 0.22
+          const satMat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color('#cbd5e1'), // slate-300
+            roughness: 0.95,
+            metalness: 0.05,
+          })
+          const satMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(satR, 12, 10),
+            satMat
+          )
+
+          const hasRings = ringsToRender.length > 0
+          const orbitRadius = planetR * (hasRings ? 2.5 : 1.7)
+          satMesh.position.set(orbitRadius, planetR * 0.3, 0)
+          satGroup.add(satMesh)
+          mesh.userData.satelliteGroup = satGroup
         }
 
         // 프레넬 대기 셸 (카테고리 색 가장자리 산란 — 소속 단서)
@@ -797,55 +935,227 @@ export function StarMapCanvas() {
 
         mesh.userData.categoryColor = catColor.clone()
 
-        // 동심원 궤도 반경 (안쪽부터 바깥쪽으로 일정 간격)
-        const radius = sunR + 16 + j * 12 + (j % 2) * 2.5
-        const angle = (j * 2.399963) % (Math.PI * 2) // 황금각으로 시작각 분산
+        // 피보나치 로그 나선형 배치 (Accretion Disc): 궤도 간격은 바깥으로 갈수록 불규칙하게 벌어진다
+        const radius = orbitRadius(sunR, j)
+        const angle = (j * 2.399963) % (Math.PI * 2) // 황금각 분산
 
-        // 케플러식: 안쪽일수록 빠르게, 모두 같은 방향(순행)으로 공전
-        const speed = 1.1 / Math.pow(radius, 1.5)
+        // 노트 본문 크기(줄 수)에 따라 공전 및 자전 속도 다변화
+        let speedMultiplier = 1.0
+        let selfRotY = 0.005 + (j % 4) * 0.0025
+
+        if (lineCount >= 2000) {
+          speedMultiplier = 0.4  // 거대하고 무거운 행성은 느리고 중후하게 공전
+          selfRotY = 0.024       // 목성/토성처럼 가스 거인으로서의 엄청나게 빠른 자전 속도
+        } else if (lineCount >= 1000) {
+          speedMultiplier = 0.7  // 1000줄 이상의 무거운 행성은 일반 행성보다 살짝 느리게 공전
+          selfRotY = 0.015       // 빠른 자전 속도
+        }
+
+        const speed = (1.1 / Math.pow(radius / 10, 1.5)) * speedMultiplier
 
         const p = center.clone()
           .addScaledVector(e1, radius * Math.cos(angle))
           .addScaledVector(e2, radius * Math.sin(angle))
         mesh.position.copy(p)
 
-        // 희미한 궤도 선 (태양계 느낌 강화)
-        const segs = 96
-        const orbitPts: number[] = []
-        for (let s = 0; s <= segs; s++) {
-          const a = (s / segs) * Math.PI * 2
-          const op = center.clone()
-            .addScaledVector(e1, radius * Math.cos(a))
-            .addScaledVector(e2, radius * Math.sin(a))
-          orbitPts.push(op.x, op.y, op.z)
+        // 각 행성마다 고유의 희미한 공전 궤도 선을 그린다
+        {
+          const segs = 96
+          const orbitPts: number[] = []
+          for (let s = 0; s <= segs; s++) {
+            const a = (s / segs) * Math.PI * 2
+            const op = center.clone()
+              .addScaledVector(e1, radius * Math.cos(a))
+              .addScaledVector(e2, radius * Math.sin(a))
+            orbitPts.push(op.x, op.y, op.z)
+          }
+          const orbitGeo = new THREE.BufferGeometry()
+          orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(orbitPts, 3))
+          const orbitCols: number[] = []
+          for (let s = 0; s <= segs; s++) {
+            const fade = 0.25 + 0.75 * Math.abs(Math.sin((s / segs) * Math.PI * 2))
+            orbitCols.push(catColor.r * fade, catColor.g * fade, catColor.b * fade)
+          }
+          orbitGeo.setAttribute('color', new THREE.Float32BufferAttribute(orbitCols, 3))
+          const orbitLine = new THREE.Line(
+            orbitGeo,
+            new THREE.LineBasicMaterial({
+              vertexColors: true, transparent: true, opacity: 0.18,
+              depthWrite: false, blending: THREE.AdditiveBlending,
+            }),
+          )
+          scene.add(orbitLine)
         }
-        const orbitGeo = new THREE.BufferGeometry()
-        orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(orbitPts, 3))
-        const orbitCols: number[] = []
-        for (let s = 0; s <= segs; s++) {
-          const fade = 0.25 + 0.75 * Math.abs(Math.sin((s / segs) * Math.PI * 2))
-          orbitCols.push(catColor.r * fade, catColor.g * fade, catColor.b * fade)
-        }
-        orbitGeo.setAttribute('color', new THREE.Float32BufferAttribute(orbitCols, 3))
-        const orbitLine = new THREE.Line(
-          orbitGeo,
-          new THREE.LineBasicMaterial({
-            vertexColors: true, transparent: true, opacity: 0.18,
-            depthWrite: false, blending: THREE.AdditiveBlending,
-          }),
-        )
-        scene.add(orbitLine)
 
         scene.add(mesh)
         starMeshes.push(mesh)
         spinners.push(mesh)
         orbits.push({
-          center, radius, e1, e2, angle, speed,
-          selfRotY: 0.004 + (j % 4) * 0.004,
+          center, radius, e1, e2, angle, speed, selfRotY,
         })
         noteIds.push(note.id)
+        markerColors.push(catColor.r, catColor.g, catColor.b)
       })
     })
+
+    // 미분류 노트(Rogue Planets) 배치: 은하계에 소속되지 않고 우주 공간에 자유롭게 떠돌아다님
+    const uncategorizedNotes = visibleNotes.filter(n => !n.category_id)
+    if (uncategorizedNotes.length > 0) {
+      const neutralColor = new THREE.Color('#94a3b8') // 성운 빛깔의 회백색 중립 색상
+
+      uncategorizedNotes.forEach((note, j) => {
+        const kind = PLANET_KINDS[kindCounter % PLANET_KINDS.length]
+        kindCounter++
+        // 미분류 행성 크기 축소 (기존 크기의 0.4배)
+        const planetR = kind.size * 0.4
+
+        // 행성 본체: 텍스처 + 표준 재질
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(planetR, 28, 20),
+          new THREE.MeshStandardMaterial({
+            map: getTex(kind),
+            roughness: 0.92,
+            metalness: 0.0,
+          }),
+        )
+        mesh.rotation.z = (j % 5) * 0.12 - 0.2
+
+        // 고리 구성: 금성같은 고리가 있는 행성은 글의 내용이 1000줄 넘어가면 생겨야한다 2000줄이면 고리가 2줄
+        const lineCount = note.content ? note.content.split('\n').length : 0
+        const isVenus = kind.name === 'venus'
+        const hasDefaultRing = !!kind.ring
+        const ringsToRender: { inner: number, outer: number, opacity: number, rotationX: number }[] = []
+
+        if (hasDefaultRing) {
+          const rInner = planetR * 1.4
+          const rOuter = planetR * (kind.ring === 'saturn' ? 2.3 : 1.9)
+          ringsToRender.push({
+            inner: rInner,
+            outer: rOuter,
+            opacity: kind.ring === 'saturn' ? 0.9 : 0.5,
+            rotationX: kind.ring === 'saturn' ? Math.PI / 2 - 0.45 : 0.25
+          })
+        } else if (isVenus) {
+          if (lineCount >= 2000) {
+            ringsToRender.push({
+              inner: planetR * 1.4,
+              outer: planetR * 1.75,
+              opacity: 0.8,
+              rotationX: 0.25
+            })
+            ringsToRender.push({
+              inner: planetR * 1.85,
+              outer: planetR * 2.2,
+              opacity: 0.6,
+              rotationX: 0.25
+            })
+          } else if (lineCount >= 1000) {
+            ringsToRender.push({
+              inner: planetR * 1.4,
+              outer: planetR * 1.9,
+              opacity: 0.7,
+              rotationX: 0.25
+            })
+          }
+        }
+
+        ringsToRender.forEach(rInfo => {
+          const ring = new THREE.Mesh(
+            makeRingGeometry(rInfo.inner, rInfo.outer),
+            new THREE.MeshBasicMaterial({
+              map: ringTex, transparent: true,
+              opacity: rInfo.opacity,
+              side: THREE.DoubleSide, depthWrite: false,
+            }),
+          )
+          ring.rotation.x = rInfo.rotationX
+          mesh.add(ring)
+        })
+
+        // 위성 구성 (첨부파일이나 링크가 있는 노트)
+        const hasAttachmentOrLink = note.content && (
+          /!?\[.*?\]\(.*?\)/.test(note.content) ||
+          /https?:\/\//.test(note.content)
+        )
+        if (hasAttachmentOrLink) {
+          const satGroup = new THREE.Group()
+          mesh.add(satGroup)
+
+          const satR = planetR * 0.22
+          const satMat = new THREE.MeshStandardMaterial({
+            color: new THREE.Color('#e2e8f0'), // slate-200 (미분류 행성은 살짝 더 밝은 위성)
+            roughness: 0.95,
+            metalness: 0.05,
+          })
+          const satMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(satR, 12, 10),
+            satMat
+          )
+
+          const hasRings = ringsToRender.length > 0
+          const orbitRadius = planetR * (hasRings ? 2.5 : 1.7)
+          satMesh.position.set(orbitRadius, planetR * 0.3, 0)
+          satGroup.add(satMesh)
+          mesh.userData.satelliteGroup = satGroup
+        }
+
+        mesh.userData.categoryColor = neutralColor.clone()
+
+        // 각 노트의 ID 해시를 바탕으로 고유한 우주 공간 3D 좌표 배치
+        let h1 = 0, h2 = 0, h3 = 0
+        const idStr = note.id
+        for (let i = 0; i < idStr.length; i++) {
+          const char = idStr.charCodeAt(i)
+          h1 = (h1 * 31 + char) % 1000
+          h2 = (h2 * 37 + char) % 1000
+          h3 = (h3 * 41 + char) % 1000
+        }
+
+        // 반경 2400~6000 사이의 임의 구면 좌표
+        const theta = (h1 / 1000) * Math.PI * 2
+        const phi = Math.acos((h2 / 1000) * 2 - 1)
+        const r = (240 + (h3 / 1000) * 360) * 10
+
+        const roguePos = new THREE.Vector3(
+          r * Math.sin(phi) * Math.cos(theta),
+          (h2 - 500) * 0.35 * 10,
+          r * Math.cos(phi)
+        )
+
+        mesh.position.copy(roguePos)
+        scene.add(mesh)
+        starMeshes.push(mesh)
+        spinners.push(mesh)
+
+        // 공전이 없으므로 radius=0, speed=0. 실제 우주 물리학(인력, 충돌) 적용을 위해 추가 필드 기록
+        orbits.push({
+          center: roguePos.clone(),
+          radius: 0,
+          e1: new THREE.Vector3(0, 0, 0),
+          e2: new THREE.Vector3(0, 0, 0),
+          angle: 0,
+          speed: 0,
+          selfRotY: 0.003 + (j % 4) * 0.003,
+          isRogue: true,
+          velocity: new THREE.Vector3(
+            (Math.random() - 0.5) * 4.0,
+            (Math.random() - 0.5) * 1.0,
+            (Math.random() - 0.5) * 4.0
+          ),
+          mass: planetR * 10,
+          planetR: planetR,
+        })
+        noteIds.push(note.id)
+        markerColors.push(neutralColor.r, neutralColor.g, neutralColor.b)
+      })
+    }
+
+    // ── 행성 위치 마커 (화면상 고정 크기 점) ──────────────────
+    // 노트가 많은 은하는 전체를 담기 위해 카메라가 멀어지므로 3D 구체만으로는
+    // 행성이 1px 미만으로 작아져 사실상 안 보인다. sizeAttenuation:false로
+    // 거리와 무관하게 항상 화면상 일정 크기로 찍히는 점을 각 행성 위치에 겹쳐
+    // 그려, 멀리서는 별처럼 보이고 가까이서는 실제 3D 행성이 보이게 한다.
+
 
     // ── 항로 (발견된 노트 연결) ──────────────────────────────
     const routeVisuals: RouteVisual[] = []
@@ -853,9 +1163,8 @@ export function StarMapCanvas() {
     // 콘의 뾰족한 끝을 +Z로 맞춰, 이동 방향(tangent) 벡터와
     // quaternion.setFromUnitVectors로 직접 정렬한다(lookAt은 카메라가 아닌
     // 일반 Mesh에서는 방향이 반대로 적용되는 특성이 있어 사용하지 않는다).
-    const shipGeometry = new THREE.ConeGeometry(0.6, 2.2, 6)
+    const shipGeometry = new THREE.ConeGeometry(6, 22, 6)
     shipGeometry.rotateX(Math.PI / 2)
-    const shipMaterial = new THREE.MeshBasicMaterial({ color: 0xf5f5ff })
 
     function buildRouteCurvePoints(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3[] {
       const mid = a.clone().add(b).multiplyScalar(0.5)
@@ -887,7 +1196,14 @@ export function StarMapCanvas() {
         )
         scene.add(line)
 
-        const ship = new THREE.Mesh(shipGeometry, shipMaterial)
+        // 항로의 색상(카테고리 연결 색상)에 맞춰 스스로 발광하는 가벼운 베이직 재질 개별 적용
+        const shipMat = new THREE.MeshBasicMaterial({
+          color: lineColor,
+          transparent: true,
+          opacity: 0.85,
+          blending: THREE.AdditiveBlending,
+        })
+        const ship = new THREE.Mesh(shipGeometry, shipMat)
         ship.userData.shared = route.shared_entities
         scene.add(ship)
         shipMeshes.push(ship)
@@ -993,7 +1309,7 @@ export function StarMapCanvas() {
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
-      camR = Math.max(40, Math.min(maxZoom, camR + e.deltaY * 0.5))
+      camR = Math.max(400, Math.min(maxZoom, camR + e.deltaY * 5.0))
       updateCamera()
     }, { passive: false })
 
@@ -1003,23 +1319,168 @@ export function StarMapCanvas() {
       animId = requestAnimationFrame(animate)
       const t = Date.now() * 0.0012
 
-      // 밝은 별 반짝임
-      brightStarMat.opacity = 0.78 + Math.sin(t * 2.2) * 0.17
+      // 배경별 반짝임 (별마다 제각각 가끔 밝기가 튐)
+      updateTwinkle(starLayer, t)
+      updateTwinkle(brightStarLayer, t)
 
       sunDatas.forEach(s => {
         s.mesh.rotation.y += 0.003
-        const pulse = 1 + Math.sin(t + s.phase) * 0.1
-        s.glow.scale.setScalar(s.glowBase * pulse)
+        if (s.glow && s.glowBase !== undefined) {
+          const pulse = 1 + Math.sin(t + s.phase) * 0.1
+          s.glow.scale.setScalar(s.glowBase * pulse)
+        }
       })
       sunMaterials.forEach(m => { m.uniforms.uTime.value += 0.016 })
 
+      // 미분류 행성(Rogue Planets)들의 중력 인력 및 충돌 처리
+      const rogueIndices: number[] = []
+      orbits.forEach((od, idx) => {
+        if (od.isRogue) {
+          rogueIndices.push(idx)
+        }
+      })
+
+      const physicsDt = 1.0
+      const G_constant = 0.005 // 중력 상수를 크게 낮추어 부드럽고 느린 인력 유도
+      const softSq = 150.0 // 거리가 매우 가까워질 때 중력이 급증하지 않도록 완충
+      const centerGravity = 0.001 // 은하 중심 복원 강도
+      const maxSpeed = 8.0 // 행성의 최대 이동 속도를 제한하여 수치적 폭발(빅뱅) 방지
+      const dragFactor = 0.96 // 드래그(저항)를 도입하여 점진적으로 에너지를 분산하고 궤도 안정화
+
+      // 1. 중력 계산 (만유인력 적용)
+      for (let i = 0; i < rogueIndices.length; i++) {
+        const idxA = rogueIndices[i]
+        const odA = orbits[idxA]
+        const posA = odA.center
+        const velA = odA.velocity!
+        const massA = odA.mass || 1
+
+        // 속도 감쇄 (마찰/에너지 소실 모사)
+        velA.multiplyScalar(dragFactor)
+
+        // 은하 중심 방향 복원력 (일정 반경 4500 이상 벗어났을 때만 안쪽으로 유도)
+        const distToCenter = posA.length()
+        if (distToCenter > 4500.0) {
+          const centerPull = posA.clone().normalize().multiplyScalar(-centerGravity * (distToCenter - 4500.0))
+          velA.add(centerPull)
+        }
+
+        // 태양 안쪽/중심부로 들어오지 못하도록 척력 및 속도 반사 적용
+        if (distToCenter < 2400.0 && distToCenter > 0.01) {
+          const normal = posA.clone().normalize()
+          // 중심부(태양)로부터 밀어내는 척력
+          const pushStrength = (2400.0 - distToCenter) * 0.01
+          velA.addScaledVector(normal, pushStrength)
+
+          // 안쪽으로 향하는 속도가 있다면 튕겨냄 (반사)
+          const dot = velA.dot(normal)
+          if (dot < 0) {
+            velA.addScaledVector(normal, -dot * 1.2)
+          }
+
+          // 강제 위치 보정 최소 안전선 (태양 크기 130 고려하여 2000 이하로 가지 못하게 방지)
+          if (distToCenter < 2000.0) {
+            posA.setLength(2000.0)
+          }
+        }
+
+        // 행성 상호 간 만유인력
+        for (let j = i + 1; j < rogueIndices.length; j++) {
+          const idxB = rogueIndices[j]
+          const odB = orbits[idxB]
+          const posB = odB.center
+          const velB = odB.velocity!
+          const massB = odB.mass || 1
+
+          const dir = new THREE.Vector3().subVectors(posB, posA)
+          const distSq = dir.lengthSq()
+          const dist = Math.sqrt(distSq)
+
+          if (dist > 0.1) {
+            const forceMag = (G_constant * massA * massB) / (distSq + softSq)
+            const dirNorm = dir.clone().normalize()
+
+            velA.addScaledVector(dirNorm, (forceMag / massA) * physicsDt)
+            velB.addScaledVector(dirNorm, -(forceMag / massB) * physicsDt)
+          }
+        }
+      }
+
+      // 2. 충돌 감지 및 물리적 충돌 응답 (탄성 충돌)
+      for (let i = 0; i < rogueIndices.length; i++) {
+        const idxA = rogueIndices[i]
+        const odA = orbits[idxA]
+        const posA = odA.center
+        const velA = odA.velocity!
+        const rA = odA.planetR || 1.5
+        const massA = odA.mass || 1
+
+        for (let j = i + 1; j < rogueIndices.length; j++) {
+          const idxB = rogueIndices[j]
+          const odB = orbits[idxB]
+          const posB = odB.center
+          const velB = odB.velocity!
+          const rB = odB.planetR || 1.5
+          const massB = odB.mass || 1
+
+          const dir = new THREE.Vector3().subVectors(posB, posA)
+          const dist = dir.length()
+          const minDist = rA + rB
+
+          if (dist < minDist) {
+            const overlap = minDist - dist
+            const dirNorm = dist > 0.01 ? dir.clone().normalize() : new THREE.Vector3(1, 0, 0)
+
+            // 중첩 상태 강제 분리 (위치 보정 - 밀어내는 힘을 0.5배 완화하여 충격 최소화)
+            const totalMass = massA + massB
+            const ratioA = massB / totalMass
+            const ratioB = massA / totalMass
+            posA.addScaledVector(dirNorm, -overlap * ratioA * 0.5)
+            posB.addScaledVector(dirNorm, overlap * ratioB * 0.5)
+
+            // 탄성 충돌 속도 변화 계산
+            const relVel = new THREE.Vector3().subVectors(velB, velA)
+            const velAlongNormal = relVel.dot(dirNorm)
+
+            if (velAlongNormal < 0) {
+              const restitution = 0.3 // 반반력을 낮추어 부드러운 튕김 유도
+              const impulseScalar = -(1 + restitution) * velAlongNormal / (1 / massA + 1 / massB)
+
+              velA.addScaledVector(dirNorm, -impulseScalar / massA)
+              velB.addScaledVector(dirNorm, impulseScalar / massB)
+            }
+          }
+        }
+
+        // 각 행성의 물리 속도 상한선(Velocity Cap) 적용
+        const speed = velA.length()
+        if (speed > maxSpeed) {
+          velA.setLength(maxSpeed)
+        }
+      }
+
+      // 3. 전체 행성들 위치 갱신
       spinners.forEach((mesh, i) => {
         const od = orbits[i]
-        od.angle += od.speed
-        mesh.position.copy(od.center)
-          .addScaledVector(od.e1, od.radius * Math.cos(od.angle))
-          .addScaledVector(od.e2, od.radius * Math.sin(od.angle))
-        mesh.rotation.y += od.selfRotY
+        if (od.isRogue) {
+          // 미분류 행성은 누적된 속도로 위치 이동
+          od.center.addScaledVector(od.velocity!, physicsDt)
+          mesh.position.copy(od.center)
+          mesh.rotation.y += od.selfRotY
+        } else {
+          // 일반 카테고리 행성들은 공전 궤도식 적용
+          od.angle += od.speed
+          mesh.position.copy(od.center)
+            .addScaledVector(od.e1, od.radius * Math.cos(od.angle))
+            .addScaledVector(od.e2, od.radius * Math.sin(od.angle))
+          mesh.rotation.y += od.selfRotY
+        }
+
+        // 위성 공전 애니메이션
+        const satGroup = mesh.userData.satelliteGroup as THREE.Group | undefined
+        if (satGroup) {
+          satGroup.rotation.y += 0.012 + (i % 3) * 0.004
+        }
       })
 
       routeVisuals.forEach(rv => {

@@ -4,6 +4,13 @@ import { aiApi } from '../api/aiApi'
 
 const newId = () => crypto.randomUUID()
 
+function cleanGeminiGrounding(text: string): string {
+  if (!text) return text
+  let cleaned = text.replace(/[\ue200][a-zA-Z0-9]+[\ue202][^\ue201]*[\ue201]/g, '')
+  cleaned = cleaned.replace(/[\ue200-\ue207]/g, '')
+  return cleaned
+}
+
 interface AIState {
   messages: AIChatMessage[]
   model: AIModel
@@ -92,7 +99,7 @@ export const useAIStore = create<AIState>((set, get) => ({
           accumulated += chunk.text
           set(s => ({
             messages: s.messages.map(m =>
-              m.id === assistantMsg.id ? { ...m, content: accumulated } : m
+              m.id === assistantMsg.id ? { ...m, content: cleanGeminiGrounding(accumulated) } : m
             ),
           }))
         }

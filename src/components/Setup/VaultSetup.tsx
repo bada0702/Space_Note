@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNotesStore } from '../../store/notesStore'
+import { aiApi } from '../../api/aiApi'
 
 async function fetchDefaultVault(): Promise<string> {
   try {
@@ -34,10 +35,15 @@ export function VaultSetup({ onDone }: { onDone: () => void }) {
     })
   }, [])
 
-  const apply = (path: string) => {
+  const apply = async (path: string) => {
     if (!path.trim()) return
     setVaultPath(path.trim())
     localStorage.setItem('sn-vault-path', path.trim())
+    try {
+      await aiApi.patchSettings({ vault_dir: path.trim() })
+    } catch (e) {
+      console.error('Failed to sync vault path to backend:', e)
+    }
     onDone()
   }
 

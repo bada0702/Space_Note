@@ -52,13 +52,16 @@ CREATE TABLE IF NOT EXISTS settings (
   anthropic_api_key TEXT NOT NULL DEFAULT '',
   openai_api_key TEXT NOT NULL DEFAULT '',
   google_api_key TEXT NOT NULL DEFAULT '',
-  default_model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6'
+  default_model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
+  ollama_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434',
+  autology_path TEXT NOT NULL DEFAULT 'http://127.0.0.1:8000',
+  vault_dir TEXT NOT NULL DEFAULT ''
 );
 """
 
 
 def init_db() -> None:
-    conn = sqlite3.connect(settings.DB_PATH)
+    conn = sqlite3.connect(settings.DB_PATH, timeout=30.0)
     try:
         conn.executescript(SCHEMA)
         conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)")
@@ -82,6 +85,16 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE notes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
             )
+        
+        # settings 테이블 마이그레이션
+        settings_cols = {r[1] for r in conn.execute("PRAGMA table_info(settings)")}
+        if "ollama_base_url" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN ollama_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434'")
+        if "autology_path" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN autology_path TEXT NOT NULL DEFAULT 'http://127.0.0.1:8000'")
+        if "vault_dir" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN vault_dir TEXT NOT NULL DEFAULT ''")
+            
         conn.commit()
     finally:
         conn.close()
@@ -89,7 +102,7 @@ def init_db() -> None:
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(settings.DB_PATH)
+    conn = sqlite3.connect(settings.DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     try:
         yield conn

@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from db import get_conn
 from models import SettingsPatch, ChatRequest
-from services import anthropic_client, gemini_client
+from services import anthropic_client, gemini_client, ollama_client
 
 router = APIRouter()
 
@@ -23,6 +23,11 @@ def get_settings():
     return _get_settings()
 
 
+@router.get("/ai/models/ollama")
+def get_ollama_models():
+    return ollama_client.list_models()
+
+
 @router.patch("/ai/settings")
 def patch_settings(body: SettingsPatch):
     fields = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
@@ -32,6 +37,11 @@ def patch_settings(body: SettingsPatch):
             conn.execute(
                 f"UPDATE settings SET {sets} WHERE id = 1", (*fields.values(),)
             )
+    from config import settings
+    settings.reload()
+    if "vault_dir" in fields:
+        from services.vault import sync_db_with_vault
+        sync_db_with_vault()
     return _get_settings()
 
 
@@ -83,8 +93,13 @@ def chat(req: ChatRequest):
     system = _build_system(req)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
-    # 모델 이름으로 제공자 선택 (gemini-* → Google, 그 외 → Anthropic)
-    client = gemini_client if req.model.startswith("gemini") else anthropic_client
+    # 모델 이름으로 제공자 선택 (gemini-* → Google, claude-* → Anthropic, 그 외 → Ollama)
+    if req.model.startswith("gemini"):
+        client = gemini_client
+    elif req.model.startswith("claude"):
+        client = anthropic_client
+    else:
+        client = ollama_client
 
     def gen():
         try:

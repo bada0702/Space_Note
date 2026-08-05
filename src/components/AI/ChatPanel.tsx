@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
+import { aiApi } from '../../api/aiApi'
 import { ChatMessage } from './ChatMessage'
 import type { AIModel } from '../../types'
 
@@ -18,9 +19,15 @@ export function ChatPanel() {
   } = useAIStore()
   const { activeNote } = useNotesStore()
   const [input, setInput] = useState('')
+  const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { loadSettings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    aiApi.getOllamaModels()
+      .then(setOllamaModels)
+      .catch(e => console.error('Ollama 모델 목록 조회 실패:', e))
+  }, [])
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -56,6 +63,13 @@ export function ChatPanel() {
           {(Object.keys(MODEL_LABELS) as AIModel[]).map(m => (
             <option key={m} value={m}>{MODEL_LABELS[m]}</option>
           ))}
+          {ollamaModels.length > 0 && (
+            <optgroup label="Ollama (로컬)">
+              {ollamaModels.map(m => (
+                <option key={m.name} value={m.name}>{m.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
         <button
           onClick={clearMessages}

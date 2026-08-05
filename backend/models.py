@@ -34,6 +34,7 @@ class SettingsPatch(BaseModel):
     openai_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
     default_model: Optional[str] = None
+    vault_dir: Optional[str] = None
 
 
 class ChatMessage(BaseModel):

@@ -26,6 +26,8 @@ def _row_to_note(row) -> dict:
     d["tags"] = json.loads(d.get("tags") or "[]")
     d["is_favorite"] = bool(d.get("is_favorite"))
     d["is_archived"] = bool(d.get("is_archived"))
+    if d.get("analysis_status") in ("analyzed_ai", "analyzed_py"):
+        d["analysis_status"] = "analyzed"
     return d
 
 
@@ -55,10 +57,35 @@ def _run_extraction(note_id: str, content: str) -> None:
                      norm_name(e["name"]), now),
                 )
             conn.execute(
-                "UPDATE notes SET analysis_status = 'analyzed' WHERE id = ?", (note_id,)
+                "UPDATE notes SET analysis_status = 'analyzed_ai' WHERE id = ?", (note_id,)
             )
     except Exception:
         logger.exception("entity extraction failed for note %s", note_id)
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE notes SET analysis_status = 'failed' WHERE id = ?", (note_id,)
+            )
+
+
+def _run_extraction_python(note_id: str, content: str) -> None:
+    """백그라운드: 파이썬 기반 엔티티 추출 후 저장 + analysis_status 갱신."""
+    try:
+        entities = extraction.extract_entities_python(content)
+        now = _now()
+        with get_conn() as conn:
+            conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))
+            for e in entities:
+                conn.execute(
+                    "INSERT INTO entities (id, note_id, name, type, norm, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), note_id, e["name"], e["type"],
+                     norm_name(e["name"]), now),
+                )
+            conn.execute(
+                "UPDATE notes SET analysis_status = 'analyzed_py' WHERE id = ?", (note_id,)
+            )
+    except Exception:
+        logger.exception("python entity extraction failed for note %s", note_id)
         with get_conn() as conn:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'failed' WHERE id = ?", (note_id,)
@@ -86,19 +113,19 @@ def _require_api_key() -> None:
     if not extraction.has_api_key():
         raise HTTPException(
             status_code=400,
-            detail="AI API 키가 설정되지 않았습니다 (설정에서 Anthropic 또는 Google 키를 저장하세요)",
+            detail="AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)",
         )
 
 
 @router.post("/notes/analyze")
 def analyze_all(bg: BackgroundTasks):
-    """내용이 있는 pending/failed 노트 전체를 백그라운드로 재분석."""
+    """내용이 있는 pending/failed/analyzed_py 노트 전체를 백그라운드로 재분석."""
     _require_api_key()
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, content FROM notes "
             "WHERE TRIM(COALESCE(content, '')) != '' "
-            "AND analysis_status IN ('pending', 'failed') "
+            "AND analysis_status IN ('pending', 'failed', 'analyzed_py') "
             "AND is_archived = 0"
         ).fetchall()
         for r in rows:
@@ -108,6 +135,25 @@ def analyze_all(bg: BackgroundTasks):
             )
     for r in rows:
         bg.add_task(_run_extraction, r["id"], r["content"])
+    return {"queued": len(rows)}
+
+
+@router.post("/notes/analyze-python")
+def analyze_all_python(bg: BackgroundTasks):
+    """내용이 있는 모든 노트를 파이썬으로 분석 (API 키 불필요)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, content FROM notes "
+            "WHERE TRIM(COALESCE(content, '')) != '' "
+            "AND is_archived = 0"
+        ).fetchall()
+        for r in rows:
+            conn.execute(
+                "UPDATE notes SET analysis_status = 'pending' WHERE id = ?",
+                (r["id"],),
+            )
+    for r in rows:
+        bg.add_task(_run_extraction_python, r["id"], r["content"])
     return {"queued": len(rows)}
 
 
@@ -125,6 +171,22 @@ def analyze_one(nid: str, bg: BackgroundTasks):
             "UPDATE notes SET analysis_status = 'pending' WHERE id = ?", (nid,)
         )
     bg.add_task(_run_extraction, nid, row["content"] or "")
+    return {"queued": 1}
+
+
+@router.post("/notes/{nid}/analyze-python")
+def analyze_one_python(nid: str, bg: BackgroundTasks):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, content FROM notes WHERE id = ?", (nid,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE notes SET analysis_status = 'pending' WHERE id = ?", (nid,)
+        )
+    bg.add_task(_run_extraction_python, nid, row["content"] or "")
     return {"queued": 1}
 
 
@@ -196,8 +258,8 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
         now = _now() if content_touched else current["modified_at"]
         if content_touched:
             if new_title != current["title"]:
-                vault.delete_md(current["title"])
-            path = vault.write_md(new_title, new_content, new_tags)
+                vault.delete_md(current["path"])
+            path = vault.write_md(new_title, new_content, new_tags, existing_path=current["path"])
         else:
             path = current["path"]
 
@@ -221,9 +283,9 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
 @router.delete("/notes/{nid}", status_code=204)
 def delete_note(nid: str):
     with get_conn() as conn:
-        row = conn.execute("SELECT title FROM notes WHERE id = ?", (nid,)).fetchone()
+        row = conn.execute("SELECT path FROM notes WHERE id = ?", (nid,)).fetchone()
         if row is not None:
-            vault.delete_md(row["title"])
+            vault.delete_md(row["path"])
         conn.execute("DELETE FROM notes WHERE id = ?", (nid,))
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))

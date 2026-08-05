@@ -29,6 +29,7 @@ export type AIModel =
   | 'claude-haiku-4-5'
   | 'gemini-2.5-flash'
   | 'gemini-2.0-flash'
+  | (string & {})
 
 export interface AIChatMessage {
   id: string
@@ -50,6 +51,7 @@ export interface AISettings {
   openai_api_key: string
   google_api_key: string
   default_model: string
+  vault_dir?: string
 }
 
 export interface SearchResult {

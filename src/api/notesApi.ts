@@ -25,4 +25,8 @@ export const notesApi = {
     apiFetch<{ queued: number }>('/notes/analyze', { method: 'POST' }),
   analyzeOne: (id: string) =>
     apiFetch<{ queued: number }>(`/notes/${id}/analyze`, { method: 'POST' }),
+  analyzeAllPython: () =>
+    apiFetch<{ queued: number }>('/notes/analyze-python', { method: 'POST' }),
+  analyzeOnePython: (id: string) =>
+    apiFetch<{ queued: number }>(`/notes/${id}/analyze-python`, { method: 'POST' }),
 }

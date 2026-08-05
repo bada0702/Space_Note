@@ -3,7 +3,7 @@ chcp 65001 > nul
 echo [SpaceNote] Starting...
 
 :: Backend
-start "SpaceNote Backend" cmd /k "cd /d "%~dp0backend" && call venv\Scripts\activate && uvicorn main:app --port 8001 --reload"
+start "SpaceNote Backend" cmd /k "cd /d "%~dp0backend" && call venv\Scripts\activate && uvicorn main:app --port 8001"
 
 :: Wait for backend
 ping 127.0.0.1 -n 4 > nul

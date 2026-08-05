@@ -1,6 +1,25 @@
 import { useEffect, useState } from 'react'
 import { useAIStore } from '../../store/aiStore'
+import { useNotesStore } from '../../store/notesStore'
+import { aiApi } from '../../api/aiApi'
 import type { AISettings } from '../../types'
+
+// 웹모드(브라우저)에는 Tauri 런타임 브리지가 없어 폴더 선택 대화상자를 띄울 수 없다.
+// 이 체크 없이 열기를 시도하면 window.__TAURI_INTERNALS__가 없어 조용히 실패해
+// 버튼이 아무 반응도 없는 것처럼 보인다.
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+async function pickFolderViaTauri(): Promise<string | null> {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({ directory: true, title: '노트 저장 폴더 선택' })
+    return typeof selected === 'string' ? selected : null
+  } catch {
+    return null
+  }
+}
 
 const MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6',   label: 'Claude Sonnet 4.6' },
@@ -14,6 +33,8 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([])
+  const [folderPickerHint, setFolderPickerHint] = useState(false)
 
   const refreshSavedKeys = () => {
     const s = useAIStore.getState().settings
@@ -35,10 +56,14 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
           openai_api_key: '',
           google_api_key: '',
           default_model: s.default_model,
+          vault_dir: s.vault_dir ?? '',
         })
         refreshSavedKeys()
       }
     })
+    aiApi.getOllamaModels()
+      .then(setOllamaModels)
+      .catch(e => console.error('Failed to fetch Ollama models', e))
   }, [])
 
   const setField = (k: keyof AISettings, v: string) =>
@@ -57,12 +82,22 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
       }
       await saveSettings(patch)
       await loadSettings()
+
+      if (patch.vault_dir) {
+        const path = patch.vault_dir.trim()
+        useNotesStore.getState().setVaultPath(path)
+        localStorage.setItem('sn-vault-path', path)
+        useNotesStore.setState({ activeNote: null })
+        await useNotesStore.getState().fetchNotes()
+      }
+
       refreshSavedKeys()
       setForm(f => ({
         ...f,
         anthropic_api_key: '',
         openai_api_key: '',
         google_api_key: '',
+        vault_dir: form.vault_dir,
       }))
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
@@ -102,7 +137,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
           <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>
-            AI 설정
+            시스템 설정
           </span>
           <button
             onClick={onClose}
@@ -113,6 +148,55 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label htmlFor="vault_dir" style={labelStyle}>노트 저장 경로 (Vault Dir)</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                id="vault_dir"
+                type="text"
+                placeholder="예: /path/to/notes"
+                value={form.vault_dir ?? ''}
+                onChange={e => setField('vault_dir', e.target.value)}
+                style={inputStyle}
+              />
+              <button
+                onClick={async () => {
+                  if (!isTauri()) {
+                    // 브라우저에는 절대경로를 주는 폴더 선택창이 없다 — 조용히 아무 반응 없는
+                    // 대신, 입력창에 직접 타이핑하라는 걸 바로 알려주고 포커스를 옮겨준다.
+                    setFolderPickerHint(true)
+                    document.getElementById('vault_dir')?.focus()
+                    return
+                  }
+                  const picked = await pickFolderViaTauri()
+                  if (picked) {
+                    setField('vault_dir', picked)
+                    setFolderPickerHint(false)
+                  }
+                }}
+                type="button"
+                style={{
+                  padding: '6px 12px',
+                  background: 'var(--bg-input)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 5,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                찾아보기
+              </button>
+            </div>
+            {folderPickerHint && (
+              <p style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
+                이 환경(웹 브라우저)에서는 폴더 선택 대화상자를 지원하지 않아요 — 위 입력창에 서버의 절대경로를 직접 입력하세요.
+              </p>
+            )}
+          </div>
+
+          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
           {[
             { key: 'anthropic_api_key' as const, label: 'Anthropic API Key (Claude)', placeholder: 'sk-ant-...' },
             { key: 'openai_api_key'    as const, label: 'OpenAI API Key (GPT)',       placeholder: 'sk-...' },
@@ -149,6 +233,16 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               {MODEL_OPTIONS.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
+              {ollamaModels.length > 0 && (
+                <optgroup label="Ollama Models (로컬)">
+                  {ollamaModels.map(m => (
+                    <option key={m.name} value={m.name}>{m.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {form.default_model && !MODEL_OPTIONS.find(m => m.value === form.default_model) && !ollamaModels.find(m => m.name === form.default_model) && (
+                <option value={form.default_model}>{form.default_model} (Unknown)</option>
+              )}
             </select>
           </div>
         </div>

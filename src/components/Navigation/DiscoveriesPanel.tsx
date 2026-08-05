@@ -21,14 +21,18 @@ export function DiscoveriesPanel() {
     loadDiscoveries(activeNote?.id)
   }, [activeNote?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 내용 있는 노트의 pending이 모두 풀릴 때까지 3초 간격 폴링 (최대 3분 —
-  // API 한도(429) 백오프 재시도 때문에 노트당 오래 걸릴 수 있음)
-  const pollUntilDone = async (): Promise<boolean> => {
-    for (let i = 0; i < 60 && alive.current; i++) {
-      await new Promise(r => setTimeout(r, 3000))
+  // 내용 있는 노트의 pending이 모두 풀릴 때까지 폴링하며 진행 상태 안내
+  const pollUntilDone = async (onProgress: (completed: number, total: number) => void): Promise<boolean> => {
+    for (let i = 0; i < 180 && alive.current; i++) {
       const list = await notesApi.list()
-      const busy = list.some(n => n.analysis_status === 'pending' && n.word_count > 0)
-      if (!busy) return true
+      const total = list.filter(n => n.word_count > 0).length
+      const pending = list.filter(n => n.analysis_status === 'pending' && n.word_count > 0).length
+      const completed = total - pending
+
+      onProgress(completed, total)
+
+      if (pending === 0) return true
+      await new Promise(r => setTimeout(r, 2000)) // 2초 주기 체크
     }
     return false
   }
@@ -42,11 +46,16 @@ export function DiscoveriesPanel() {
         setNotice('분석할 노트가 없습니다')
         return
       }
-      setNotice(`${queued}개 노트 분석 중...`)
-      const done = await pollUntilDone()
+      setNotice(`분석 준비 중...`)
+      
+      const done = await pollUntilDone((completed, total) => {
+        setNotice(`분석 진행 중: 전체 ${total}개 중 ${completed}개 완료 (${completed}/${total}개)`)
+      })
+      
       if (!alive.current) return
       await fetchNotes()
       await loadDiscoveries(activeNote?.id)
+      
       if (!done) {
         setNotice('아직 분석이 진행 중입니다 — 잠시 후 새로고침을 눌러주세요')
         return
@@ -55,13 +64,13 @@ export function DiscoveriesPanel() {
         .filter(n => n.analysis_status === 'failed' && n.word_count > 0).length
       setNotice(
         failed > 0
-          ? `${failed}개 분석 실패 — API 요청 한도(429)일 수 있습니다. 1분 후 다시 시도하세요`
-          : '',
+          ? `${failed}개 분석 실패 — 잠시 후 다시 시도하세요`
+          : '모든 노트의 분석 및 항로 연결이 완료되었습니다!',
       )
     } catch (e: any) {
       setNotice(
         String(e?.message).includes('API 400')
-          ? '설정에서 API 키를 먼저 저장하세요 (Anthropic 또는 Gemini)'
+          ? 'AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)'
           : '분석 요청에 실패했습니다',
       )
     } finally {
@@ -91,9 +100,10 @@ export function DiscoveriesPanel() {
 
       {/* 분석/새로고침 */}
       <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* 자동항로분석 (Python) */}
           <button
-            onClick={() => runAnalyze(() => notesApi.analyzeAll())}
+            onClick={() => runAnalyze(() => notesApi.analyzeAllPython())}
             disabled={analyzing}
             style={{
               fontSize: 11, color: 'var(--text-primary)',
@@ -101,23 +111,58 @@ export function DiscoveriesPanel() {
               borderRadius: 4, padding: '3px 10px',
               cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
             }}
+            title="인공지능을 사용하지 않고 파이썬 엔진으로 빠르게 관련 키워드와 태그를 추출하여 항로를 찾습니다."
           >
-            ⟡ 전체 항로 분석
+            ⟡ 자동항로분석
           </button>
+
+          {/* AI 항로분석 */}
+          <button
+            onClick={() => runAnalyze(() => notesApi.analyzeAll())}
+            disabled={analyzing}
+            style={{
+              fontSize: 11, color: 'var(--text-primary)',
+              background: 'var(--bg-input)', border: '1px solid var(--border)',
+              borderRadius: 4, padding: '3px 10px',
+              cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
+            }}
+            title="거대언어모델(LLM)을 사용하여 맥락을 분석하고 의미적으로 관련된 항로를 찾습니다."
+          >
+            ✦ AI 항로분석
+          </button>
+
           {activeNote && (
-            <button
-              onClick={() => runAnalyze(() => notesApi.analyzeOne(activeNote.id))}
-              disabled={analyzing}
-              style={{
-                fontSize: 11, color: 'var(--text-secondary)',
-                background: 'var(--bg-input)', border: '1px solid var(--border)',
-                borderRadius: 4, padding: '3px 10px',
-                cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
-              }}
-            >
-              이 노트 분석
-            </button>
+            <>
+              {/* 이 노트 자동 분석 */}
+              <button
+                onClick={() => runAnalyze(() => notesApi.analyzeOnePython(activeNote.id))}
+                disabled={analyzing}
+                style={{
+                  fontSize: 11, color: 'var(--text-secondary)',
+                  background: 'var(--bg-input)', border: '1px solid var(--border)',
+                  borderRadius: 4, padding: '3px 10px',
+                  cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
+                }}
+              >
+                자동 분석 (이 노트)
+              </button>
+
+              {/* 이 노트 AI 분석 */}
+              <button
+                onClick={() => runAnalyze(() => notesApi.analyzeOne(activeNote.id))}
+                disabled={analyzing}
+                style={{
+                  fontSize: 11, color: 'var(--text-secondary)',
+                  background: 'var(--bg-input)', border: '1px solid var(--border)',
+                  borderRadius: 4, padding: '3px 10px',
+                  cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
+                }}
+              >
+                AI 분석 (이 노트)
+              </button>
+            </>
           )}
+
           <button
             onClick={() => loadDiscoveries(activeNote?.id)}
             disabled={analyzing}
@@ -125,6 +170,7 @@ export function DiscoveriesPanel() {
               fontSize: 11, color: 'var(--text-secondary)',
               background: 'var(--bg-input)', border: '1px solid var(--border)',
               borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
+              marginLeft: 'auto',
             }}
           >
             ↺ 새로고침

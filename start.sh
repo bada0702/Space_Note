@@ -27,7 +27,7 @@ fi
 # 2. Run Python Backend in background
 echo "Starting backend on port 8001..."
 # Run uvicorn using the virtual environment's python/uvicorn
-nohup uvicorn main:app --port 8001 --reload --app-dir backend > backend.log 2>&1 &
+nohup uvicorn main:app --port 8001 --app-dir backend > backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > .backend.pid
 echo "Backend started with PID: $BACKEND_PID (logs: backend.log)"
@@ -66,7 +66,7 @@ if [ "$MODE" = "desktop" ] || [ "$MODE" = "2" ]; then
     echo "Frontend (Tauri) started with PID: $FRONTEND_PID (logs: frontend.log)"
 else
     echo "Starting SpaceNote in Web Mode (Vite)..."
-    nohup npm run dev > frontend.log 2>&1 &
+    nohup npm run dev < /dev/null > frontend.log 2>&1 &
     FRONTEND_PID=$!
     echo $FRONTEND_PID > .frontend.pid
     echo "Frontend (Vite) started with PID: $FRONTEND_PID (logs: frontend.log)"

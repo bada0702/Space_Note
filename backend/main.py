@@ -20,6 +20,9 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    settings.reload()
+    from services.vault import sync_db_with_vault
+    sync_db_with_vault()
 
 
 @app.get("/health")

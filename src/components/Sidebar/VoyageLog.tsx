@@ -14,6 +14,7 @@ export function VoyageLog() {
   const [catError, setCatError] = useState('')
   const [uncatDragOver, setUncatDragOver] = useState(false)
   const [blackholeOpen, setBlackholeOpen] = useState(false)
+  const [lastClicks, setLastClicks] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetchCategories().catch(console.error)
@@ -41,7 +42,22 @@ export function VoyageLog() {
 
   const handleSelectNote = (id: string) => {
     openNote(id)
+  }
+
+  const handleDoubleClickNote = (id: string) => {
+    openNote(id)
     setTab('edit')
+  }
+
+  const handleNoteClick = (id: string) => {
+    const now = Date.now()
+    const lastClick = lastClicks[id] ?? 0
+    if (now - lastClick < 300) {
+      handleDoubleClickNote(id)
+    } else {
+      handleSelectNote(id)
+    }
+    setLastClicks(prev => ({ ...prev, [id]: now }))
   }
 
   const handleUncatDrop = (e: React.DragEvent) => {
@@ -100,7 +116,7 @@ export function VoyageLog() {
                 paddingRight: '12px', paddingTop: '3px', paddingBottom: '3px',
                 display: 'block', cursor: 'pointer',
               }}
-              onClick={() => handleSelectNote(note.id)}
+              onClick={() => handleNoteClick(note.id)}
             >
               {note.title}
             </button>
@@ -166,6 +182,7 @@ export function VoyageLog() {
           category={cat}
           notes={notesByCategory(cat.id)}
           onSelectNote={handleSelectNote}
+          onDoubleClickNote={handleDoubleClickNote}
           onCreateNote={handleCreateNote}
           onDropNote={noteId => moveNote(noteId, cat.id)}
           activeNoteId={activeNote?.id}
@@ -208,7 +225,7 @@ export function VoyageLog() {
                 display: 'block',
                 cursor: 'grab',
               }}
-              onClick={() => handleSelectNote(note.id)}
+              onClick={() => handleNoteClick(note.id)}
             >
               {note.title}
             </button>

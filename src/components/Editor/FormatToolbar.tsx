@@ -1,5 +1,4 @@
 import type * as monaco from 'monaco-editor'
-import { useNotesStore } from '../../store/notesStore'
 import { attachmentMarkdown, uploadAttachment } from '../../api/attachmentsApi'
 
 /** 커서 위치(또는 선택 영역)에 텍스트 삽입 */
@@ -201,42 +200,6 @@ const GROUPS: ToolBtn[][] = [
 ]
 
 export function FormatToolbar({ editorRef }: Props) {
-  const { activeNote } = useNotesStore()
-
-  const handlePrint = () => {
-    if (!activeNote || !editorRef.current) return
-    const content = editorRef.current.getValue()
-    const escapeHtml = (s: string) => s.replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const title = escapeHtml(activeNote.title)
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${title}</title>
-  <style>
-    body { font-family: 'Pretendard', 'Inter', sans-serif; font-size: 14px; line-height: 1.8; max-width: 800px; margin: 40px auto; color: #0a0a0a; }
-    h1 { font-size: 24px; font-weight: 700; margin: 24px 0 12px; }
-    h2 { font-size: 20px; font-weight: 600; margin: 20px 0 10px; }
-    h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px; }
-    pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; }
-    code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
-    blockquote { border-left: 3px solid #ccc; margin: 0; padding-left: 16px; color: #555; }
-    hr { border: none; border-top: 1px solid #e0e0e0; margin: 24px 0; }
-    @media print { body { margin: 20px; } }
-  </style>
-</head>
-<body>
-  <h1>${title}</h1>
-  <pre style="white-space: pre-wrap; font-family: inherit; background: none; padding: 0;">${escapeHtml(content)}</pre>
-</body>
-</html>`
-    const w = window.open('', '_blank')
-    if (!w) return
-    w.document.write(html)
-    w.document.close()
-    w.focus()
-    w.print()
-  }
 
   const btn = (b: ToolBtn) => (
     <button
@@ -301,35 +264,8 @@ export function FormatToolbar({ editorRef }: Props) {
         {items}
       </div>
 
-      {/* 구분선 + 인쇄 버튼 — 오른쪽 고정 */}
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-      {sep('sep-print')}
-      <button
-        title="인쇄"
-        onClick={handlePrint}
-        style={{
-          fontSize: '11px',
-          fontWeight: 500,
-          color: 'var(--text-secondary)',
-          padding: '2px 8px',
-          borderRadius: '3px',
-          lineHeight: 1.4,
-          whiteSpace: 'nowrap',
-          background: 'transparent',
-          border: '1px solid var(--border)',
-        }}
-        onMouseEnter={e => {
-          ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'
-          ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-secondary)'
-        }}
-        onMouseLeave={e => {
-          ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'
-          ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'
-        }}
-      >
-        인쇄
-      </button>
-      </div>
+      {/* 오른쪽 여백 — 서식 버튼을 가운데로 밀기 */}
+      <div style={{ flex: 1 }} />
     </div>
   )
 }

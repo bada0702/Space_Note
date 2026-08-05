@@ -15,6 +15,7 @@ import { ApiSettings } from './components/Setup/ApiSettings'
 import { useNotesStore } from './store/notesStore'
 import { useAIStore } from './store/aiStore'
 import { useSearchStore } from './store/searchStore'
+import { aiApi } from './api/aiApi'
 
 function MainPanel() {
   const { activeTab } = useNotesStore()
@@ -60,6 +61,7 @@ function AppContent() {
     const saved = localStorage.getItem('sn-vault-path')
     if (saved) {
       setVaultPath(saved)
+      aiApi.patchSettings({ vault_dir: saved }).catch(e => console.error('Failed to sync vault path on load:', e))
       setReady(true)
     }
   }, [])
