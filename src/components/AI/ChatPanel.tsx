@@ -5,11 +5,11 @@ import { aiApi } from '../../api/aiApi'
 import { ChatMessage } from './ChatMessage'
 import type { AIModel } from '../../types'
 
-const MODEL_LABELS: Record<AIModel, string> = {
+const MODEL_LABELS: Record<string, string> = {
   'claude-sonnet-4-6':   'Claude Sonnet',
   'claude-haiku-4-5':    'Claude Haiku',
-  'gemini-2.5-flash':    'Gemini Flash',
-  'gemini-2.0-flash':    'Gemini 2.0 Flash',
+  'gemini-3.5-flash':    'Gemini 3.5 Flash',
+  'gemini-3.8-flash':    'Gemini 3.8 Flash',
 }
 
 export function ChatPanel() {

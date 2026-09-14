@@ -18,7 +18,7 @@ def search(q: str = ""):
     like = f"%{term}%"
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, title, content, category_id, modified_at FROM notes "
+            "SELECT id, title, content, category_id, created_at, modified_at FROM notes "
             "WHERE (title LIKE ? OR content LIKE ?) AND is_archived = 0 "
             "ORDER BY modified_at DESC LIMIT 50",
             (like, like),
@@ -29,6 +29,7 @@ def search(q: str = ""):
             "title": r["title"],
             "content_preview": (r["content"] or "")[:200],
             "category_id": r["category_id"],
+            "created_at": r["created_at"],
             "modified_at": r["modified_at"],
         }
         for r in rows

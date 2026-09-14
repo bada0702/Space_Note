@@ -24,7 +24,8 @@ async function pickFolderViaTauri(): Promise<string | null> {
 const MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6',   label: 'Claude Sonnet 4.6' },
   { value: 'claude-haiku-4-5',    label: 'Claude Haiku 4.5' },
-  { value: 'gemini-2.5-flash',    label: 'Gemini 2.5 Flash' },
+  { value: 'gemini-3.5-flash',    label: 'Gemini 3.5 Flash' },
+  { value: 'gemini-3.8-flash',    label: 'Gemini 3.8 Flash' },
 ]
 
 export function ApiSettings({ onClose }: { onClose: () => void }) {

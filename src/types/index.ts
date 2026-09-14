@@ -27,8 +27,11 @@ export type Theme = 'dark' | 'light'
 export type AIModel =
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
+  | 'gemini-3.5-flash'
+  | 'gemini-3.6-flash'
+  | 'gemini-3.7-flash'
+  | 'gemini-3.8-flash'
   | 'gemini-2.5-flash'
-  | 'gemini-2.0-flash'
   | (string & {})
 
 export interface AIChatMessage {
@@ -59,6 +62,7 @@ export interface SearchResult {
   title: string
   content_preview: string
   category_id: string | null
+  created_at: string
   modified_at: string
 }
 

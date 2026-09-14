@@ -4,7 +4,7 @@ import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 
 export function SearchPanel() {
-  const { query, results, loading, setQuery, doSearch, setPanel } = useSearchStore()
+  const { query, results, loading, sortBy, sortDir, setQuery, doSearch, setPanel, setSort } = useSearchStore()
   const { openNote, setTab } = useNotesStore()
   const { categories } = useCategoriesStore()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -54,6 +54,27 @@ export function SearchPanel() {
             검색
           </button>
         </div>
+        {results.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            {([
+              { by: 'created' as const, label: '날짜순' },
+              { by: 'title' as const, label: '제목순' },
+            ]).map(opt => (
+              <button
+                key={opt.by}
+                onClick={() => setSort(opt.by)}
+                style={{
+                  padding: '3px 8px', borderRadius: 4,
+                  background: sortBy === opt.by ? 'var(--bg-input)' : 'none',
+                  color: sortBy === opt.by ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11,
+                }}
+              >
+                {opt.label}{sortBy === opt.by && (sortDir === 'asc' ? ' ▲' : ' ▼')}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 결과 */}

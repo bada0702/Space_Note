@@ -9,9 +9,16 @@ import httpx
 from db import get_conn
 from services.anthropic_client import _EXTRACT_PROMPT, parse_entities
 
-# gemini-2.0-flash는 무료 등급 할당량이 0(limit: 0)인 프로젝트가 많아 2.5를 기본으로
-ALLOWED_CHAT_MODELS = {"gemini-2.5-flash", "gemini-2.0-flash"}
-EXTRACT_MODEL = "gemini-2.5-flash"
+# gemini-2.x는 신규 사용자/프로젝트에 더 이상 제공되지 않으므로(404 Not Found) 3.6-flash 이상 지원
+ALLOWED_CHAT_MODELS = {
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
+    "gemini-2.5-flash",
+}
+EXTRACT_MODEL = "gemini-3.5-flash"
 _BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -76,7 +83,7 @@ def extract_entities(content: str) -> list[dict]:
 def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     """텍스트 델타를 순차 yield. 모델/키 검증 실패 시 예외."""
     if model not in ALLOWED_CHAT_MODELS:
-        raise ValueError("현재 Gemini 모델(gemini-2.5-flash, gemini-2.0-flash)만 지원합니다")
+        raise ValueError(f"현재 지원하는 Gemini 모델이 아닙니다. (지원: {', '.join(sorted(ALLOWED_CHAT_MODELS))})")
     key = _api_key()
     if not key:
         raise ValueError("Google API 키가 설정되지 않았습니다")
