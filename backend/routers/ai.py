@@ -1,4 +1,6 @@
 import json
+import math
+import re
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -6,8 +8,13 @@ from fastapi.responses import StreamingResponse
 from db import get_conn
 from models import SettingsPatch, ChatRequest
 from services import anthropic_client, gemini_client, ollama_client
+from services.extraction import kiwi, is_korean_stopword_or_ending, strip_korean_particles
 
 router = APIRouter()
+
+RAG_LIMIT = 5
+RAG_EXCERPT = 1200
+RAG_MAX_KEYWORDS = 8
 
 
 def _get_settings() -> dict:
@@ -45,6 +52,97 @@ def patch_settings(body: SettingsPatch):
     return _get_settings()
 
 
+def _query_keywords(text: str) -> list[str]:
+    words: list[str] = []
+    if kiwi:
+        try:
+            words = [
+                t.form for t in kiwi.tokenize(text)
+                if t.tag in ("NNG", "NNP", "SL", "SH")
+            ]
+        except Exception:
+            words = []
+    if not words:
+        words = [strip_korean_particles(w) for w in re.findall(r"[0-9A-Za-z가-힣]+", text)]
+
+    seen: set[str] = set()
+    keywords = []
+    for w in words:
+        key = w.casefold()
+        if len(w) < 2 or key in seen or is_korean_stopword_or_ending(w):
+            continue
+        seen.add(key)
+        keywords.append(w)
+    return keywords[:RAG_MAX_KEYWORDS]
+
+
+def _excerpt(content: str, keywords: list[str]) -> str:
+    lower = content.casefold()
+    hits = [p for p in (lower.find(k.casefold()) for k in keywords) if p >= 0]
+    start = max(0, min(hits) - RAG_EXCERPT // 4) if hits else 0
+    return content[start:start + RAG_EXCERPT]
+
+
+def _retrieve_notes(conn, query: str, category_id, exclude_id) -> list:
+    """질문 키워드로 관련 노트를 점수화해 고른다. 매칭이 없으면 최근 노트로 대체."""
+    scope = "is_archived = 0"
+    scope_params: list = []
+    if category_id:
+        scope += " AND category_id = ?"
+        scope_params.append(category_id)
+    if exclude_id:
+        scope += " AND id != ?"
+        scope_params.append(exclude_id)
+
+    keywords = _query_keywords(query)
+    if keywords:
+        cond = " OR ".join("title LIKE ? OR content LIKE ?" for _ in keywords)
+        like_params = [p for k in keywords for p in (f"%{k}%", f"%{k}%")]
+        rows = conn.execute(
+            f"SELECT id, title, content, modified_at FROM notes WHERE {scope} AND ({cond})",
+            (*scope_params, *like_params),
+        ).fetchall()
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM notes WHERE {scope}", scope_params
+        ).fetchone()[0]
+
+        docs = [
+            (r, (r["title"] or "").casefold(), (r["content"] or "").casefold())
+            for r in rows
+        ]
+        # 흔한 단어("방법", "정리")가 드문 고유명사를 압도하지 않도록 IDF 가중
+        idf = {}
+        for k in keywords:
+            kl = k.casefold()
+            df = sum(1 for _, t, c in docs if kl in t or kl in c)
+            idf[k] = math.log(1 + total / df) if df else 0.0
+
+        scored = []
+        for r, title, content in docs:
+            score = 0.0
+            for k in keywords:
+                kl = k.casefold()
+                if kl in title:
+                    score += 3 * idf[k]
+                count = content.count(kl)
+                if count:
+                    score += idf[k] * (1 + math.log(count))
+            if score > 0:
+                scored.append((score, r["modified_at"] or "", r))
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        if scored:
+            return [
+                (r["title"], _excerpt(r["content"] or "", keywords))
+                for _, _, r in scored[:RAG_LIMIT]
+            ]
+
+    rows = conn.execute(
+        f"SELECT title, content FROM notes WHERE {scope} ORDER BY modified_at DESC LIMIT ?",
+        (*scope_params, RAG_LIMIT),
+    ).fetchall()
+    return [(r["title"], (r["content"] or "")[:RAG_EXCERPT]) for r in rows]
+
+
 def _build_system(req: ChatRequest) -> str:
     """컨텍스트(현재 노트/RAG/위키)를 system 프롬프트로 구성."""
     parts = [
@@ -61,19 +159,13 @@ def _build_system(req: ChatRequest) -> str:
                 parts.append(f"[현재 노트] {row['title']}\n{row['content']}")
 
         if req.use_rag:
-            if req.context_category_id:
-                rows = conn.execute(
-                    "SELECT title, content FROM notes WHERE category_id = ? "
-                    "ORDER BY modified_at DESC LIMIT 5",
-                    (req.context_category_id,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT title, content FROM notes ORDER BY modified_at DESC LIMIT 5"
-                ).fetchall()
-            ctx = "\n\n".join(
-                f"# {r['title']}\n{(r['content'] or '')[:1000]}" for r in rows
+            # 후속 질문("그건 왜?")도 주제를 잃지 않도록 최근 사용자 발화 2개를 합쳐 검색
+            user_turns = [m.content for m in req.messages if m.role == "user"]
+            query = "\n".join(user_turns[-2:])
+            notes = _retrieve_notes(
+                conn, query, req.context_category_id, req.context_note_id
             )
+            ctx = "\n\n".join(f"# {title}\n{body}" for title, body in notes)
             if ctx:
                 parts.append("[참고 노트]\n" + ctx)
 

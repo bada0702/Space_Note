@@ -113,3 +113,66 @@ def test_chat_routes_ollama_prefix_to_ollama_client(client, monkeypatch):
     assert r.status_code == 200
     assert "로컬 응답" in r.text
     assert captured["model"] == "llama3:8b"
+
+
+def _capture_system(client, monkeypatch, body):
+    from routers import ai as ai_router
+
+    captured = {}
+
+    def fake_stream_chat(model, system, messages):
+        captured["system"] = system
+        yield "ok"
+
+    monkeypatch.setattr(ai_router.anthropic_client, "stream_chat", fake_stream_chat)
+    r = client.post("/ai/chat", json={"model": "claude-sonnet-4-6", **body}, headers=AUTH)
+    assert r.status_code == 200
+    return captured["system"]
+
+
+def test_rag_selects_notes_relevant_to_question(client, monkeypatch):
+    client.post(
+        "/notes",
+        json={"title": "Agent Loop 구현 방법", "content": "도구 호출 결과를 다시 모델에 넣는 루프"},
+        headers=AUTH,
+    )
+    for i in range(6):
+        client.post(
+            "/notes", json={"title": f"최근 잡담 {i}", "content": "점심 메뉴 방법"}, headers=AUTH
+        )
+
+    system = _capture_system(client, monkeypatch, {
+        "messages": [{"role": "user", "content": "작년에 정리한 Agent Loop 구현 방법 알려줘"}],
+        "use_rag": True,
+    })
+    ctx = system.split("[참고 노트]", 1)[1]
+    assert ctx.strip().startswith("# Agent Loop 구현 방법")
+    assert "도구 호출 결과" in ctx
+
+
+def test_rag_excludes_archived_and_falls_back_to_recent(client, monkeypatch):
+    note = client.post(
+        "/notes", json={"title": "XRDP 세션 로그", "content": "세션 종료"}, headers=AUTH
+    ).json()
+    client.post("/notes", json={"title": "다른 노트", "content": "무관한 내용"}, headers=AUTH)
+    from db import get_conn
+    with get_conn() as conn:
+        conn.execute("UPDATE notes SET is_archived = 1 WHERE id = ?", (note["id"],))
+
+    system = _capture_system(client, monkeypatch, {
+        "messages": [{"role": "user", "content": "XRDP 세션 문제"}],
+        "use_rag": True,
+    })
+    assert "XRDP 세션 로그" not in system
+    assert "다른 노트" in system
+
+
+def test_rag_excerpt_centers_on_keyword(client, monkeypatch):
+    content = "서론 " * 1000 + "핵심키워드 설명 본문"
+    client.post("/notes", json={"title": "긴 노트", "content": content}, headers=AUTH)
+
+    system = _capture_system(client, monkeypatch, {
+        "messages": [{"role": "user", "content": "핵심키워드"}],
+        "use_rag": True,
+    })
+    assert "핵심키워드 설명 본문" in system
