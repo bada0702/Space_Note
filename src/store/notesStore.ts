@@ -16,6 +16,7 @@ interface NotesState {
   saveNote: (id: string, content: string) => Promise<void>
   renameNote: (id: string, title: string) => Promise<void>
   createNote: (title: string, categoryId?: string, content?: string) => Promise<Note>
+  importChatGPT: (url: string) => Promise<Note>
   deleteNote: (id: string) => Promise<void>
   moveNote: (id: string, categoryId: string | null) => Promise<void>
   toggleFavorite: (id: string) => Promise<void>
@@ -66,6 +67,12 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   createNote: async (title, categoryId, content) => {
     const note = await notesApi.create(title, get().vaultPath, categoryId, content)
     set(s => ({ notes: [note, ...s.notes], activeNote: note }))
+    return note
+  },
+
+  importChatGPT: async (url) => {
+    const note = await notesApi.importChatGPT(url)
+    set(s => ({ notes: [note, ...s.notes], activeNote: note, activeTab: 'edit' }))
     return note
   },
 

@@ -20,6 +20,11 @@ class NoteCreate(BaseModel):
     content: Optional[str] = None
 
 
+class ChatGPTImport(BaseModel):
+    url: str
+    category_id: Optional[str] = None
+
+
 class NotePatch(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None

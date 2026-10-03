@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Note } from '../../types'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
+import { useAIStore } from '../../store/aiStore'
 import { CategoryItem, NoteItem, NOTE_DRAG_MIME } from './CategoryItem'
 
 const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#0C8599']
@@ -9,12 +10,18 @@ const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#
 export function VoyageLog() {
   const { categories, fetchCategories, addCategory, loading } = useCategoriesStore()
   const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote,
-    archivedNotes, archivedCount, fetchArchived, restoreNote, deleteNote } = useNotesStore()
+    archivedNotes, archivedCount, fetchArchived, restoreNote, deleteNote, activeTab, importChatGPT } = useNotesStore()
+  const { panelOpen, setPanelOpen } = useAIStore()
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catError, setCatError] = useState('')
   const [uncatDragOver, setUncatDragOver] = useState(false)
   const [blackholeOpen, setBlackholeOpen] = useState(false)
+  const [uncatOpen, setUncatOpen] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importUrl, setImportUrl] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState('')
   const [lastClicks, setLastClicks] = useState<Record<string, number>>({})
   // 다중 선택: Shift 클릭 = 같은 목록 안에서 범위, Ctrl/⌘ 클릭 = 개별 토글, Delete 키 = 선택 삭제
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -40,6 +47,26 @@ export function VoyageLog() {
     }
   }
 
+  const handleImport = async () => {
+    const url = importUrl.trim()
+    if (!url || importing) return
+    setImporting(true)
+    setImportError('')
+    try {
+      await importChatGPT(url)
+      if (panelOpen) setPanelOpen(false)
+      setImportUrl('')
+      setShowImport(false)
+    } catch (e) {
+      // apiFetch 오류 메시지: "API 400: {"detail":"..."}" → detail만 보여준다
+      const msg = e instanceof Error ? e.message : String(e)
+      const detail = msg.match(/"detail":"([^"]+)"/)?.[1]
+      setImportError(detail ?? msg)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const handleCreateNote = async (categoryId: string) => {
     const title = `새 노트 ${notes.length + 1}`
     await createNote(title, categoryId).catch(console.error)
@@ -47,6 +74,9 @@ export function VoyageLog() {
 
   const handleSelectNote = (id: string) => {
     openNote(id)
+    // 성도/AI 채팅이 화면을 차지하고 있으면 노트를 열어도 보이지 않으므로 편집 화면으로 전환
+    if (panelOpen) setPanelOpen(false)
+    if (activeTab === 'starmap') setTab('edit')
   }
 
   const handleDoubleClickNote = (id: string) => {
@@ -132,6 +162,10 @@ export function VoyageLog() {
 
   const notesByCategory = (catId: string) => notes.filter(n => n.category_id === catId)
   const uncategorized = notes.filter(n => !n.category_id)
+  const activeUncat = !!activeNote && uncategorized.some(n => n.id === activeNote.id)
+  useEffect(() => {
+    if (activeUncat) setUncatOpen(true)
+  }, [activeUncat, activeNote?.id])
   const favorites = notes.filter(n => n.is_favorite)
 
   const noteRow = (note: typeof notes[number], opts: { draggable?: boolean } = {}) => (
@@ -176,7 +210,41 @@ export function VoyageLog() {
         >
           + 은하
         </button>
+        <button
+          className="sn-icon-btn"
+          style={{ width: 'auto', padding: '0 6px', fontWeight: 500 }}
+          onClick={() => { setShowImport(s => !s); setImportError('') }}
+          title="ChatGPT 공유 링크로 노트 가져오기"
+        >
+          ⤓ GPT
+        </button>
       </div>
+
+      {showImport && (
+        <div style={{ padding: '4px 10px 8px 16px' }}>
+          <div className="flex gap-1">
+            <input
+              autoFocus
+              className="sn-input"
+              value={importUrl}
+              onChange={e => setImportUrl(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleImport()
+                if (e.key === 'Escape') { setShowImport(false); setImportError('') }
+              }}
+              placeholder="https://chatgpt.com/share/..."
+              disabled={importing}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <button className="sn-btn" onClick={handleImport} disabled={importing || !importUrl.trim()}>
+              {importing ? '가져오는 중…' : '가져오기'}
+            </button>
+          </div>
+          {importError && (
+            <p role="alert" style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger)', marginTop: '4px' }}>{importError}</p>
+          )}
+        </div>
+      )}
 
       {showNewCat && (
         <div style={{ padding: '4px 10px 8px 16px' }}>
@@ -238,11 +306,17 @@ export function VoyageLog() {
       {uncategorized.length > 0 && (
         <div style={{ marginTop: '10px' }}>
           <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={uncatOpen}
             className="sn-label"
             style={{
+              cursor: 'pointer',
               background: uncatDragOver ? 'var(--star-soft)' : undefined,
               outline: uncatDragOver ? '1px dashed var(--star)' : undefined,
             }}
+            onClick={() => setUncatOpen(o => !o)}
+            onKeyDown={e => e.key === 'Enter' && setUncatOpen(o => !o)}
             onDragOver={e => {
               if (!e.dataTransfer.types.includes(NOTE_DRAG_MIME)) return
               e.preventDefault()
@@ -251,9 +325,10 @@ export function VoyageLog() {
             onDragLeave={() => setUncatDragOver(false)}
             onDrop={handleUncatDrop}
           >
+            <span aria-hidden="true" style={{ width: '8px', fontSize: '10px', color: 'var(--text-tertiary)' }}>{uncatOpen ? '▾' : '▸'}</span>
             미분류 <span className="sn-count">{uncategorized.length}</span>
           </div>
-          <ul>
+          {uncatOpen && <ul>
             {uncategorized.map(note => (
               <NoteItem
                 key={note.id}
@@ -265,7 +340,7 @@ export function VoyageLog() {
                 onDoubleClick={() => handleDoubleClickNote(note.id)}
               />
             ))}
-          </ul>
+          </ul>}
         </div>
       )}
 

@@ -10,6 +10,11 @@ export const notesApi = {
     return apiFetch<Note[]>(`/notes${qs ? `?${qs}` : ''}`)
   },
   get: (id: string) => apiFetch<Note>(`/notes/${id}`),
+  importChatGPT: (url: string, categoryId?: string) =>
+    apiFetch<Note>('/notes/import/chatgpt', {
+      method: 'POST',
+      body: JSON.stringify({ url, category_id: categoryId ?? null }),
+    }),
   create: (title: string, vaultPath: string, categoryId?: string, content?: string) =>
     apiFetch<Note>('/notes', {
       method: 'POST',

@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 
 from db import get_conn
-from models import NoteCreate, NotePatch
-from services import vault
+from models import ChatGPTImport, NoteCreate, NotePatch
+from services import chatgpt_share, vault
 from services import extraction
 from services import graph_extraction
 from services.tagparse import extract_tags
@@ -212,6 +212,31 @@ def create_note(body: NoteCreate, bg: BackgroundTasks):
     if content.strip():
         bg.add_task(_run_extraction, nid, content)
     return _row_to_note(row)
+
+
+def _unique_title(title: str) -> str:
+    """같은 이름의 노트/파일이 있으면 _2, _3…을 붙인다 (create_note는 같은 파일명을 덮어쓴다)."""
+    with get_conn() as conn:
+        taken = {r["title"] for r in conn.execute("SELECT title FROM notes")}
+    candidate, n = title, 1
+    while candidate in taken or vault.md_path(candidate).exists():
+        n += 1
+        candidate = f"{title}_{n}"
+    return candidate
+
+
+@router.post("/notes/import/chatgpt")
+def import_chatgpt(body: ChatGPTImport, bg: BackgroundTasks):
+    """ChatGPT 공유 링크의 대화를 새 노트로 만든다."""
+    try:
+        url = chatgpt_share.normalize_share_url(body.url)
+        conv = chatgpt_share.parse_share_html(chatgpt_share.fetch_share_html(url))
+    except chatgpt_share.ShareImportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # 볼트 노트 제목 관례: 공백 대신 밑줄
+    title = _unique_title(vault.safe_filename(conv.title).replace(" ", "_"))
+    content = chatgpt_share.to_markdown(conv, url)
+    return create_note(NoteCreate(title=title, category_id=body.category_id, content=content), bg)
 
 
 @router.get("/notes/{nid}")

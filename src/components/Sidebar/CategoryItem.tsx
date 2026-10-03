@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Category, Note } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
@@ -99,13 +99,20 @@ export function NoteItem({
 }
 
 export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId, onCreateNote, onDropNote, selectedIds, onSelectClick }: Props) {
-  const [open, setOpen] = useState(true)
+  // 처음엔 은하 이름만 보이고, 눌러야 노트 목록이 펼쳐진다
+  const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [nameValue, setNameValue] = useState(category.name)
   const [dragOver, setDragOver] = useState(false)
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const { setTab, setStarMapFilter } = useNotesStore()
   const { updateCategory, deleteCategory } = useCategoriesStore()
+
+  // 성도·검색 등에서 이 은하의 노트를 열면 목록을 펼쳐 위치를 보여준다
+  const hasActive = !!activeNoteId && notes.some(n => n.id === activeNoteId)
+  useEffect(() => {
+    if (hasActive) setOpen(true)
+  }, [hasActive, activeNoteId])
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
