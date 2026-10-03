@@ -40,7 +40,7 @@ interface RouteVisual {
   aIdx: number
   bIdx: number
   line: THREE.Line
-  ship: THREE.Mesh
+  shared: string[]
   t: number
   dir: number
 }
@@ -123,6 +123,18 @@ void main() {
 const ORBIT_SPEED_SCALE = 2.5
 const ORBIT_SPEED_MAX = 0.02
 
+// 행성 궤도 경사각 상한(라디안, ≈70°) — 행성마다 다른 평면으로 공전해 성계가 원반이 아닌 3차원 구름처럼 보이게
+const MAX_ORBIT_INCLINATION = 1.22
+
+// 0~1 사이 결정적 의사난수 — 새로고침해도 같은 노트는 같은 궤도에 놓이도록
+function hash01(n: number): number {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453
+  return x - Math.floor(x)
+}
+
+// 항성(카테고리 태양) 반지름 — 가장 큰 행성(목성 40)의 5배
+const SUN_RADIUS = 200.0
+
 function orbitRadius(sunR: number, j: number): number {
   // 첫 궤도는 태양 표면에 바짝 붙이고(스케일 배율 미적용), 노트가 쌓이며
   // 벌어지는 누적 간격만 ×10 스케일을 적용해 대형 성계에서도 far plane을
@@ -143,7 +155,7 @@ function orbitRadius(sunR: number, j: number): number {
 function systemRadius(noteCount: number): number {
   const displayCount = Math.min(noteCount, 800)
   if (displayCount === 0) return 600
-  const sunR = 500.0
+  const sunR = SUN_RADIUS
   return orbitRadius(sunR, displayCount - 1) + 400
 }
 
@@ -769,6 +781,50 @@ export function StarMapCanvas() {
     // ── 항성 (카테고리) ──────────────────────────────────────
     const glowTex = makeGlowTexture()
     disposables.push(glowTex)
+
+    // ── 기항지(즐겨찾기) 행성: 작은 태양 ─────────────────────────
+    // 은하 태양과 같은 플라즈마 셰이더 표면 + 같은 비율의 코로나 + (앞쪽 몇 개만) 주변을 비추는 점광원.
+    // 점광원은 개수만큼 모든 재질의 셰이더 비용이 늘어 상한을 둔다.
+    const FAVORITE_LIGHT_LIMIT = 4
+    const favoriteGlow = new THREE.Color('#ffc861')
+    const favoriteStarMats: THREE.ShaderMaterial[] = []
+    const favoriteGlows: { sprite: THREE.Sprite; base: number; phase: number }[] = []
+    let favoriteLightCount = 0
+    function makeFavoriteStar(mesh: THREE.Mesh, planetR: number) {
+      ;(mesh.material as THREE.Material).dispose()
+      const starMat = new THREE.ShaderMaterial({
+        vertexShader: SUN_VERT,
+        fragmentShader: SUN_FRAG,
+        uniforms: {
+          uColor: { value: favoriteGlow.clone() },
+          uTime: { value: Math.random() * 100 },
+        },
+      })
+      mesh.material = starMat
+      favoriteStarMats.push(starMat)
+      // 행성용 대기층(가장자리 색 띠)은 태양 표면과 어울리지 않아 뺀다
+      mesh.children.filter(c => (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry instanceof THREE.SphereGeometry)
+        .forEach(c => {
+          mesh.remove(c)
+          ;(c as THREE.Mesh).geometry.dispose()
+          ;((c as THREE.Mesh).material as THREE.Material).dispose()
+        })
+      // 광륜 10배, 코로나 40배 — 행성 자체는 작아도 멀리서 기항지가 보이도록 은하 태양보다 넓게
+      for (const [scale, opacity] of [[planetR * 10, 0.85], [planetR * 40, 0.35]] as const) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glowTex, color: favoriteGlow,
+          transparent: true, opacity,
+          depthWrite: false, blending: THREE.AdditiveBlending,
+        }))
+        sprite.scale.setScalar(scale)
+        mesh.add(sprite)
+        favoriteGlows.push({ sprite, base: scale, phase: Math.random() * Math.PI * 2 })
+      }
+      if (favoriteLightCount < FAVORITE_LIGHT_LIMIT) {
+        favoriteLightCount++
+        mesh.add(new THREE.PointLight(favoriteGlow, 1.6, planetR * 40, 0))
+      }
+    }
     const sunDatas: SunData[] = []
     const sunMaterials: THREE.ShaderMaterial[] = []
 
@@ -778,7 +834,7 @@ export function StarMapCanvas() {
       const color = new THREE.Color(cat.color)
       const noteCount = visibleNotes.filter(n => n.category_id === cat.id).length
 
-      const sunR = 500.0
+      const sunR = SUN_RADIUS
 
       const sunMat = new THREE.ShaderMaterial({
         vertexShader: SUN_VERT,
@@ -827,6 +883,9 @@ export function StarMapCanvas() {
     })
 
     // ── 노트 행성 (절차적 표면 텍스처) ───────────────────────
+    const orbitLineMaterial = new THREE.LineBasicMaterial({
+      color: 0x33373e, transparent: true, opacity: 0.9, depthWrite: false,
+    })
     const texCache = new Map<string, THREE.Texture>()
     const getTex = (kind: PlanetKind) => {
       let t = texCache.get(kind.name)
@@ -845,7 +904,7 @@ export function StarMapCanvas() {
     // 위치를 같이 갱신하는 화면상 고정 크기 점 마커의 색상 버퍼
     const markerColors: number[] = []
 
-    // 카테고리별로 노트를 묶어 같은 평면에서 동심원 궤도(태양계 형태)로 배치
+    // 카테고리별로 노트를 묶어 태양 주위 동심원 궤도로 배치 (궤도면은 행성마다 기울어짐)
     let kindCounter = 0
     visibleCats.forEach(cat => {
       const ci = categories.findIndex(c => c.id === cat.id)
@@ -854,7 +913,7 @@ export function StarMapCanvas() {
       const catNotes = visibleNotes.filter(n => n.category_id === cat.id).slice(0, 800)
       if (catNotes.length === 0) return
 
-      const sunR = 500.0
+      const sunR = SUN_RADIUS
 
       // 이 항성계의 황도면(카테고리마다 다른 기울기로 전체가 평평해지지 않게)
       const tiltX = 0.12 + (ci % 4) * 0.14
@@ -862,8 +921,8 @@ export function StarMapCanvas() {
       const planeM = new THREE.Matrix4().makeRotationFromEuler(
         new THREE.Euler(tiltX, tiltY, 0),
       )
-      const e1 = new THREE.Vector3(1, 0, 0).applyMatrix4(planeM)
-      const e2 = new THREE.Vector3(0, 0, 1).applyMatrix4(planeM)
+      const baseE1 = new THREE.Vector3(1, 0, 0).applyMatrix4(planeM)
+      const baseE2 = new THREE.Vector3(0, 0, 1).applyMatrix4(planeM)
 
       catNotes.forEach((note, j) => {
         const kind = PLANET_KINDS[kindCounter % PLANET_KINDS.length]
@@ -977,10 +1036,20 @@ export function StarMapCanvas() {
         mesh.add(atmo)
 
         mesh.userData.categoryColor = catColor.clone()
+        if (note.is_favorite) makeFavoriteStar(mesh, planetR)
 
         // 피보나치 로그 나선형 배치 (Accretion Disc): 궤도 간격은 바깥으로 갈수록 불규칙하게 벌어진다
         const radius = orbitRadius(sunR, j)
         const angle = (j * 2.399963) % (Math.PI * 2) // 황금각 분산
+
+        // 행성별 궤도면: 황도면을 승교점(node) 축으로 경사각만큼 기울인다.
+        // 경사각은 작은 값이 많고 큰 값은 드물게(u^1.6) — 대부분 황도면 근처, 일부는 가파르게
+        const seed = ci * 1000 + j
+        const node = hash01(seed) * Math.PI * 2
+        const incl = (hash01(seed + 0.5) < 0.5 ? -1 : 1) * MAX_ORBIT_INCLINATION * Math.pow(hash01(seed + 0.25), 1.6)
+        const nodeAxis = baseE1.clone().multiplyScalar(Math.cos(node)).addScaledVector(baseE2, Math.sin(node))
+        const e1 = baseE1.clone().applyAxisAngle(nodeAxis, incl)
+        const e2 = baseE2.clone().applyAxisAngle(nodeAxis, incl)
 
         // 노트 본문 크기(줄 수)에 따라 공전 및 자전 속도 다변화
         let speedMultiplier = 1.0
@@ -1019,19 +1088,8 @@ export function StarMapCanvas() {
           }
           const orbitGeo = new THREE.BufferGeometry()
           orbitGeo.setAttribute('position', new THREE.Float32BufferAttribute(orbitPts, 3))
-          const orbitCols: number[] = []
-          for (let s = 0; s <= segs; s++) {
-            const fade = 0.25 + 0.75 * Math.abs(Math.sin((s / segs) * Math.PI * 2))
-            orbitCols.push(catColor.r * fade, catColor.g * fade, catColor.b * fade)
-          }
-          orbitGeo.setAttribute('color', new THREE.Float32BufferAttribute(orbitCols, 3))
-          const orbitLine = new THREE.Line(
-            orbitGeo,
-            new THREE.LineBasicMaterial({
-              vertexColors: true, transparent: true, opacity: 0.18,
-              depthWrite: false, blending: THREE.AdditiveBlending,
-            }),
-          )
+          // 궤도선: 진한 회색, 불투명 90% (가산 혼합이면 겹칠수록 하얗게 번지므로 일반 혼합)
+          const orbitLine = new THREE.Line(orbitGeo, orbitLineMaterial)
           scene.add(orbitLine)
         }
 
@@ -1148,6 +1206,7 @@ export function StarMapCanvas() {
         }
 
         mesh.userData.categoryColor = neutralColor.clone()
+        if (note.is_favorite) makeFavoriteStar(mesh, planetR)
 
         // 각 노트의 ID 해시를 바탕으로 고유한 우주 공간 3D 좌표 배치
         let h1 = 0, h2 = 0, h3 = 0
@@ -1207,12 +1266,98 @@ export function StarMapCanvas() {
 
     // ── 항로 (발견된 노트 연결) ──────────────────────────────
     const routeVisuals: RouteVisual[] = []
-    const shipMeshes: THREE.Mesh[] = []
-    // 콘의 뾰족한 끝을 +Z로 맞춰, 이동 방향(tangent) 벡터와
+    // 우주선 부품별 InstancedMesh (항로가 수천 개라 우주선마다 Mesh를 만들면 draw call이 폭증한다)
+    let shipMeshes: THREE.InstancedMesh[] = []
+    let shipFlames: THREE.InstancedMesh | null = null
+    let shipBodies: THREE.InstancedMesh[] = [] // 화염을 뺀 모든 부품 (같은 변환 행렬 공유)
+    // 우주선: 기수(nose)를 +Z로 맞춰, 이동 방향(tangent) 벡터와
     // quaternion.setFromUnitVectors로 직접 정렬한다(lookAt은 카메라가 아닌
     // 일반 Mesh에서는 방향이 반대로 적용되는 특성이 있어 사용하지 않는다).
-    const shipGeometry = new THREE.ConeGeometry(6, 22, 6)
-    shipGeometry.rotateX(Math.PI / 2)
+    // 동체(회전체) + 후퇴익 + 수직 꼬리날개 + 조종석 + 엔진 화염으로 구성, 지오메트리는 모든 우주선이 공유
+    const shipHullGeo = new THREE.LatheGeometry([
+      new THREE.Vector2(0, -11), new THREE.Vector2(3.2, -11), new THREE.Vector2(4.2, -8),
+      new THREE.Vector2(4.6, -2), new THREE.Vector2(4.0, 4), new THREE.Vector2(2.6, 9),
+      new THREE.Vector2(1.0, 12), new THREE.Vector2(0, 13.5),
+    ], 16)
+    shipHullGeo.rotateX(Math.PI / 2) // 회전축 +Y → +Z(기수)
+
+    const wingShape = new THREE.Shape()
+    wingShape.moveTo(0, 3)
+    wingShape.lineTo(13, -8)
+    wingShape.lineTo(13, -10.5)
+    wingShape.lineTo(0, -8)
+    wingShape.lineTo(-13, -10.5)
+    wingShape.lineTo(-13, -8)
+    wingShape.closePath()
+    const shipWingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.8, bevelEnabled: false })
+    shipWingGeo.translate(0, 0, -0.4)
+    shipWingGeo.rotateX(Math.PI / 2) // 도형의 y(앞뒤) → z, 두께는 y
+
+    const finShape = new THREE.Shape()
+    finShape.moveTo(-10.5, 0)
+    finShape.lineTo(-4.5, 0)
+    finShape.lineTo(-8.5, 6.5)
+    finShape.lineTo(-11, 6.5)
+    finShape.closePath()
+    const shipFinGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.6, bevelEnabled: false })
+    shipFinGeo.translate(0, 0, -0.3)
+    shipFinGeo.rotateY(-Math.PI / 2) // 도형의 x → z (기수 방향)
+    shipFinGeo.translate(0, 3.2, 0)
+
+    const shipCockpitGeo = new THREE.SphereGeometry(1.8, 16, 12)
+    shipCockpitGeo.scale(1, 0.8, 2.2)
+    shipCockpitGeo.translate(0, 3.0, 4.5)
+
+    const shipNozzleGeo = new THREE.CylinderGeometry(2.6, 3.2, 2.2, 16, 1, true)
+    shipNozzleGeo.rotateX(Math.PI / 2)
+    shipNozzleGeo.translate(0, 0, -11.6)
+
+    // 화염: 꼭짓점이 -Z(뒤)를 향하는 원뿔, 원점을 노즐 위치에 두어 z 방향 스케일로 길이를 흔든다
+    const shipFlameGeo = new THREE.ConeGeometry(2.4, 10, 14, 1, true)
+    shipFlameGeo.translate(0, 5, 0)   // 밑면(넓은 쪽)을 원점(노즐)에
+    shipFlameGeo.rotateX(-Math.PI / 2) // 꼭짓점 +Y → -Z
+
+    const SHIP_FLAME_Z = -11.8
+    const SHIP_FORWARD = new THREE.Vector3(0, 0, 1)
+    const SHIP_UNIT_SCALE = new THREE.Vector3(1, 1, 1)
+    const shipQuat = new THREE.Quaternion()
+    const shipMat4 = new THREE.Matrix4()
+    const flameLocal = new THREE.Matrix4()
+    const flameMat4 = new THREE.Matrix4()
+
+    function buildFleet(colors: THREE.Color[]) {
+      const n = colors.length
+      const white = new THREE.Color(0xffffff)
+      const hullGray = new THREE.Color(0xc9d3e6)
+      const make = (geo: THREE.BufferGeometry, mat: THREE.Material, color?: (c: THREE.Color) => THREE.Color) => {
+        const m = new THREE.InstancedMesh(geo, mat, n)
+        m.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+        m.frustumCulled = false // 인스턴스가 매 프레임 움직여 바운딩 구가 금방 낡는다
+        if (color) colors.forEach((c, i) => m.setColorAt(i, color(c)))
+        scene.add(m)
+        return m
+      }
+      // 인스턴스 색은 재질 색에 곱해지므로 재질은 흰색, 색은 인스턴스별로
+      const hull = make(shipHullGeo, new THREE.MeshStandardMaterial({
+        color: 0xffffff, metalness: 0.65, roughness: 0.35, emissive: 0x1a1d26,
+      }), c => hullGray.clone().lerp(c, 0.25))
+      const accent = new THREE.MeshStandardMaterial({
+        color: 0xffffff, metalness: 0.4, roughness: 0.45, emissive: 0x15161c,
+      })
+      const wings = make(shipWingGeo, accent, c => c.clone())
+      const fin = make(shipFinGeo, accent, c => c.clone())
+      const cockpit = make(shipCockpitGeo, new THREE.MeshBasicMaterial({ color: 0x9fe8ff }))
+      const nozzle = make(shipNozzleGeo, new THREE.MeshStandardMaterial({
+        color: 0x3a4152, metalness: 0.8, roughness: 0.3, side: THREE.DoubleSide,
+      }))
+      shipFlames = make(shipFlameGeo, new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.75,
+        depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      }), c => c.clone().lerp(white, 0.45))
+      // 동체·날개·꼬리날개 어디에 마우스를 올려도 공유 개체 툴팁이 뜨도록
+      shipMeshes = [hull, wings, fin]
+      shipBodies = [hull, wings, fin, cockpit, nozzle]
+    }
 
     function buildRouteCurvePoints(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3[] {
       const mid = a.clone().add(b).multiplyScalar(0.5)
@@ -1224,6 +1369,7 @@ export function StarMapCanvas() {
     let routesCancelled = false
     searchApi.discoveryRoutes().then(routes => {
       if (routesCancelled) return
+      const shipColors: THREE.Color[] = []
       routes.forEach((route: DiscoveryRoute) => {
         const aIdx = noteIds.indexOf(route.note_a)
         const bIdx = noteIds.indexOf(route.note_b)
@@ -1238,26 +1384,17 @@ export function StarMapCanvas() {
         const line = new THREE.Line(
           lineGeo,
           new THREE.LineBasicMaterial({
-            color: lineColor, transparent: true, opacity: 0.35,
+            color: lineColor, transparent: true, opacity: 0.2,
             depthWrite: false, blending: THREE.AdditiveBlending,
           }),
         )
         scene.add(line)
 
-        // 항로의 색상(카테고리 연결 색상)에 맞춰 스스로 발광하는 가벼운 베이직 재질 개별 적용
-        const shipMat = new THREE.MeshBasicMaterial({
-          color: lineColor,
-          transparent: true,
-          opacity: 0.85,
-          blending: THREE.AdditiveBlending,
-        })
-        const ship = new THREE.Mesh(shipGeometry, shipMat)
-        ship.userData.shared = route.shared_entities
-        scene.add(ship)
-        shipMeshes.push(ship)
-
-        routeVisuals.push({ aIdx, bIdx, line, ship, t: Math.random(), dir: 1 })
+        shipColors.push(lineColor)
+        routeVisuals.push({ aIdx, bIdx, line, shared: route.shared_entities, t: Math.random(), dir: 1 })
       })
+      // 항로 색상(두 카테고리의 중간색)을 날개·엔진 화염에 입힌다
+      if (routeVisuals.length) buildFleet(shipColors)
     }).catch(err => {
       console.error('discovery routes 로드 실패:', err)
     })
@@ -1288,8 +1425,10 @@ export function StarMapCanvas() {
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       const y = -((e.clientY - rect.top) / rect.height) * 2 + 1
       raycaster.setFromCamera(new THREE.Vector2(x, y), camera)
+      // InstancedMesh는 바운딩 구로 먼저 걸러내므로 움직인 현재 위치로 갱신
+      shipMeshes.forEach(m => m.computeBoundingSphere())
       const hits = raycaster.intersectObjects([...starMeshes, ...shipMeshes], false)
-      return { hit: hits[0]?.object as THREE.Mesh | undefined, rect }
+      return { hit: hits[0]?.object as THREE.Mesh | undefined, instanceId: hits[0]?.instanceId, rect }
     }
 
     canvas.addEventListener('pointerdown', (e) => {
@@ -1321,7 +1460,7 @@ export function StarMapCanvas() {
         setTooltip(null)
         return
       }
-      const { hit, rect } = getHit(e)
+      const { hit, instanceId, rect } = getHit(e)
       if (hit) {
         const idx = starMeshes.indexOf(hit)
         const note = idx >= 0 ? visibleNotes.find(n => n.id === noteIds[idx]) : null
@@ -1330,7 +1469,8 @@ export function StarMapCanvas() {
           setTooltip({ title: note.title, x: e.clientX - rect.left, y: e.clientY - rect.top })
           return
         }
-        const shared = hit.userData.shared as string[] | undefined
+        const isShip = (shipMeshes as THREE.Object3D[]).includes(hit) && instanceId !== undefined
+        const shared = isShip ? routeVisuals[instanceId]?.shared : undefined
         if (shared) {
           canvas.style.cursor = 'default'
           setTooltip({ title: `공유: ${shared.join(', ')}`, x: e.clientX - rect.left, y: e.clientY - rect.top })
@@ -1379,6 +1519,8 @@ export function StarMapCanvas() {
         }
       })
       sunMaterials.forEach(m => { m.uniforms.uTime.value += 0.016 })
+      favoriteStarMats.forEach(m => { m.uniforms.uTime.value += 0.016 })
+      favoriteGlows.forEach(g => g.sprite.scale.setScalar(g.base * (1 + Math.sin(t + g.phase) * 0.1)))
 
       // 미분류 행성(Rogue Planets)들의 중력 인력 및 충돌 처리
       const rogueIndices: number[] = []
@@ -1531,7 +1673,7 @@ export function StarMapCanvas() {
         }
       })
 
-      routeVisuals.forEach(rv => {
+      routeVisuals.forEach((rv, i) => {
         const a = starMeshes[rv.aIdx].position
         const b = starMeshes[rv.bIdx].position
         const points = buildRouteCurvePoints(a, b)
@@ -1545,9 +1687,19 @@ export function StarMapCanvas() {
         const curve = new THREE.CatmullRomCurve3(points)
         const pos = curve.getPointAt(Math.min(0.999, Math.max(0.001, eased)))
         const tangent = curve.getTangentAt(Math.min(0.999, Math.max(0.001, eased)))
-        rv.ship.position.copy(pos)
-        rv.ship.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent.normalize())
+        if (!shipFlames) return
+        shipQuat.setFromUnitVectors(SHIP_FORWARD, tangent.normalize())
+        shipMat4.compose(pos, shipQuat, SHIP_UNIT_SCALE)
+        for (const m of shipBodies) m.setMatrixAt(i, shipMat4)
+        // 엔진 화염 깜빡임 — 양 끝에서 감속할 때는 화염도 짧아진다
+        const thrust = 4 * eased * (1 - eased)
+        flameLocal.makeScale(1, 1, 0.35 + thrust * 0.9 + Math.random() * 0.25).setPosition(0, 0, SHIP_FLAME_Z)
+        shipFlames.setMatrixAt(i, flameMat4.multiplyMatrices(shipMat4, flameLocal))
       })
+      if (shipFlames) {
+        for (const m of shipBodies) m.instanceMatrix.needsUpdate = true
+        shipFlames.instanceMatrix.needsUpdate = true
+      }
 
       composer.render()
     }
