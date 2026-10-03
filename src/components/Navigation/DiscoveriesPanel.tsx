@@ -84,14 +84,13 @@ export function DiscoveriesPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
       {/* 헤더 */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div className="glass" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
-          letterSpacing: '0.08em', marginBottom: 2,
+          fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4,
         }}>
-          ⟡ 미개척 항로
+          미개척 항로
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', opacity: 0.6 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.6 }}>
           {activeNote
             ? `"${activeNote.title.slice(0, 20)}"와 연결된 노트`
             : 'AI가 발견한 노트 간 연결'}
@@ -106,7 +105,7 @@ export function DiscoveriesPanel() {
             onClick={() => runAnalyze(() => notesApi.analyzeAllPython())}
             disabled={analyzing}
             style={{
-              fontSize: 11, color: 'var(--text-primary)',
+              fontSize: 12, color: 'var(--text-primary)',
               background: 'var(--bg-input)', border: '1px solid var(--accent-line)',
               borderRadius: 4, padding: '3px 10px',
               cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
@@ -121,7 +120,7 @@ export function DiscoveriesPanel() {
             onClick={() => runAnalyze(() => notesApi.analyzeAll())}
             disabled={analyzing}
             style={{
-              fontSize: 11, color: 'var(--text-primary)',
+              fontSize: 12, color: 'var(--text-primary)',
               background: 'var(--bg-input)', border: '1px solid var(--border)',
               borderRadius: 4, padding: '3px 10px',
               cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
@@ -138,7 +137,7 @@ export function DiscoveriesPanel() {
                 onClick={() => runAnalyze(() => notesApi.analyzeOnePython(activeNote.id))}
                 disabled={analyzing}
                 style={{
-                  fontSize: 11, color: 'var(--text-secondary)',
+                  fontSize: 12, color: 'var(--text-secondary)',
                   background: 'var(--bg-input)', border: '1px solid var(--border)',
                   borderRadius: 4, padding: '3px 10px',
                   cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
@@ -152,7 +151,7 @@ export function DiscoveriesPanel() {
                 onClick={() => runAnalyze(() => notesApi.analyzeOne(activeNote.id))}
                 disabled={analyzing}
                 style={{
-                  fontSize: 11, color: 'var(--text-secondary)',
+                  fontSize: 12, color: 'var(--text-secondary)',
                   background: 'var(--bg-input)', border: '1px solid var(--border)',
                   borderRadius: 4, padding: '3px 10px',
                   cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
@@ -167,7 +166,7 @@ export function DiscoveriesPanel() {
             onClick={() => loadDiscoveries(activeNote?.id)}
             disabled={analyzing}
             style={{
-              fontSize: 11, color: 'var(--text-secondary)',
+              fontSize: 12, color: 'var(--text-secondary)',
               background: 'var(--bg-input)', border: '1px solid var(--border)',
               borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
               marginLeft: 'auto',
@@ -177,7 +176,7 @@ export function DiscoveriesPanel() {
           </button>
         </div>
         {notice && (
-          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent-line)' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: 'var(--accent-line)' }}>
             {notice}
           </div>
         )}
@@ -220,7 +219,7 @@ export function DiscoveriesPanel() {
                 {d.title}
               </span>
               <span style={{
-                marginLeft: 'auto', fontSize: 10,
+                marginLeft: 'auto', fontSize: 12,
                 color: 'var(--accent-line)', fontWeight: 600,
               }}>
                 {d.shared_count}개 공통
@@ -232,7 +231,7 @@ export function DiscoveriesPanel() {
                   <span
                     key={ent}
                     style={{
-                      fontSize: 10, padding: '1px 6px',
+                      fontSize: 12, padding: '1px 6px',
                       background: 'var(--bg-input)', borderRadius: 10,
                       color: 'var(--text-secondary)', border: '1px solid var(--border)',
                     }}

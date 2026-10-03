@@ -38,14 +38,13 @@ export function TagsPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
       {/* 헤더 */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div className="glass" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
-          letterSpacing: '0.08em', marginBottom: 2,
+          fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4,
         }}>
-          # 태그
+          태그
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-secondary)', opacity: 0.6 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.6 }}>
           {selected ? `#${selected} 가 붙은 노트` : '본문에 #태그를 적으면 자동으로 모입니다'}
         </div>
       </div>
@@ -56,7 +55,7 @@ export function TagsPanel() {
             <button
               onClick={() => setSelected(null)}
               style={{
-                fontSize: 11, color: 'var(--text-secondary)',
+                fontSize: 12, color: 'var(--text-secondary)',
                 background: 'var(--bg-input)', border: '1px solid var(--border)',
                 borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
               }}
@@ -66,7 +65,7 @@ export function TagsPanel() {
             <button
               onClick={showInStarMap}
               style={{
-                fontSize: 11, color: 'var(--text-primary)',
+                fontSize: 12, color: 'var(--text-primary)',
                 background: 'var(--bg-input)', border: '1px solid var(--accent-line)',
                 borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
               }}
@@ -110,7 +109,7 @@ export function TagsPanel() {
             <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
               #{t.tag}
             </span>
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--accent-line)', fontWeight: 600 }}>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--accent-line)', fontWeight: 600 }}>
               {t.count}개 노트
             </span>
           </button>

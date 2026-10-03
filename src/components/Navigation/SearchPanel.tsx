@@ -23,12 +23,11 @@ export function SearchPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
       {/* 헤더 */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div className="glass" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{
-          fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)',
-          letterSpacing: '0.08em', marginBottom: 8,
+          fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8,
         }}>
-          <span style={{ fontSize: 8 }}>⊕</span> 항법 — 전문 검색
+          항법 <span style={{ fontFamily: 'var(--font-body)', fontSize: 13, fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 6 }}>노트 전문 검색</span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
@@ -67,7 +66,7 @@ export function SearchPanel() {
                   padding: '3px 8px', borderRadius: 4,
                   background: sortBy === opt.by ? 'var(--bg-input)' : 'none',
                   color: sortBy === opt.by ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11,
+                  border: '1px solid var(--border)', cursor: 'pointer', fontSize: 12,
                 }}
               >
                 {opt.label}{sortBy === opt.by && (sortDir === 'asc' ? ' ▲' : ' ▼')}
@@ -115,13 +114,13 @@ export function SearchPanel() {
               <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
                 {r.title}
               </span>
-              <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginLeft: 'auto', opacity: 0.6 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 'auto', opacity: 0.6 }}>
                 {catName(r.category_id)}
               </span>
             </div>
             {r.content_preview && (
               <div style={{
-                fontSize: 11, color: 'var(--text-secondary)',
+                fontSize: 12, color: 'var(--text-secondary)',
                 overflow: 'hidden', display: '-webkit-box',
                 WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                 lineHeight: 1.5, paddingLeft: 12,

@@ -33,7 +33,7 @@ function MainPanel() {
       <EditorTabs />
       <div
         className="flex-1 overflow-hidden"
-        style={{ background: activeTab === 'starmap' ? '#020408' : 'var(--bg-app)' }}
+        style={{ background: activeTab === 'starmap' ? '#060b16' : 'var(--bg-app)' }}
       >
         {activeTab === 'edit' && <NoteEditor />}
         {activeTab === 'preview' && <NotePreview />}

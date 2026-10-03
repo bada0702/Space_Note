@@ -3,11 +3,11 @@ import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
 import { ChatMessage } from './ChatMessage'
+import { ConversationList } from './ConversationList'
 import type { AIModel } from '../../types'
 
 const MODEL_LABELS: Record<string, string> = {
-  'claude-sonnet-4-6':   'Claude Sonnet',
-  'claude-haiku-4-5':    'Claude Haiku',
+  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
   'gemini-3.5-flash':    'Gemini 3.5 Flash',
   'gemini-3.8-flash':    'Gemini 3.8 Flash',
 }
@@ -43,20 +43,22 @@ export function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
+    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-app)' }}>
+    <ConversationList />
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
       {/* 헤더 */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
-        borderBottom: '1px solid var(--border)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 8, padding: '14px 24px',
+        borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg-panel)',
       }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
-          ✦ AI 채팅
+        <span style={{ fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
+          AI 채팅
         </span>
         <select
           value={model}
           onChange={e => setModel(e.target.value as AIModel)}
           style={{
-            fontSize: 11, background: 'var(--bg-input)', color: 'var(--text-secondary)',
+            fontSize: 12, background: 'var(--bg-input)', color: 'var(--text-secondary)',
             border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', cursor: 'pointer',
           }}
         >
@@ -74,21 +76,21 @@ export function ChatPanel() {
         <button
           onClick={clearMessages}
           style={{
-            fontSize: 10, color: 'var(--text-secondary)', padding: '2px 6px',
+            fontSize: 12, color: 'var(--text-secondary)', padding: '2px 6px',
             borderRadius: 3, border: '1px solid var(--border)',
             background: 'none', cursor: 'pointer',
           }}
         >
-          초기화
+          새 대화
         </button>
       </div>
 
       {/* 컨텍스트 옵션 */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px',
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 24px',
         borderBottom: '1px solid var(--border)', flexShrink: 0, flexWrap: 'wrap',
       }}>
-        <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+        <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={context.useRag}
@@ -96,7 +98,7 @@ export function ChatPanel() {
           />
           노트 RAG
         </label>
-        <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+        <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
           <input
             type="checkbox"
             checked={context.useWiki}
@@ -106,7 +108,7 @@ export function ChatPanel() {
         </label>
         {activeNote && (
           <span style={{
-            fontSize: 10, color: 'var(--accent-line)',
+            fontSize: 12, color: 'var(--accent-line)',
             background: 'var(--bg-input)', padding: '1px 7px', borderRadius: 10,
           }}>
             {activeNote.title.length > 16 ? activeNote.title.slice(0, 16) + '…' : activeNote.title}
@@ -115,19 +117,19 @@ export function ChatPanel() {
       </div>
 
       {/* 메시지 목록 */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
         {messages.length === 0 && (
           <div style={{
             height: '100%', display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center', gap: 8,
-            color: 'var(--text-secondary)', opacity: 0.45,
+            color: 'var(--text-tertiary)',
           }}>
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
               <circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="1.5" />
               <path d="M10 14 Q16 8 22 14 Q16 20 10 14Z" fill="currentColor" opacity="0.4" />
               <circle cx="16" cy="16" r="2" fill="currentColor" />
             </svg>
-            <span style={{ fontSize: 12 }}>무엇이든 물어보세요</span>
+            <span style={{ fontSize: 14 }}>노트에 대해 무엇이든 물어보세요</span>
           </div>
         )}
         {messages.map(msg => <ChatMessage key={msg.id} msg={msg} />)}
@@ -136,7 +138,7 @@ export function ChatPanel() {
 
       {/* 입력창 */}
       <div style={{
-        padding: '10px 14px', borderTop: '1px solid var(--border)',
+        padding: '12px 24px 16px', borderTop: '1px solid var(--border)',
         flexShrink: 0, display: 'flex', gap: 8,
       }}>
         <textarea
@@ -150,8 +152,8 @@ export function ChatPanel() {
           style={{
             flex: 1, padding: '7px 10px', borderRadius: 6, resize: 'none',
             background: 'var(--bg-input)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', fontSize: 12, outline: 'none',
-            lineHeight: 1.5, fontFamily: 'inherit',
+            border: '1px solid var(--border)', fontSize: 14, outline: 'none',
+            lineHeight: 1.55, fontFamily: 'inherit',
           }}
         />
         <button
@@ -169,6 +171,7 @@ export function ChatPanel() {
           {streaming ? '…' : '전송'}
         </button>
       </div>
+    </div>
     </div>
   )
 }

@@ -193,7 +193,9 @@ def sync_db_with_vault() -> None:
                     
                     logger.info(f"Updating note in DB: {title} ({abs_path})")
                     conn.execute(
-                        "UPDATE notes SET title = ?, content = ?, tags = ?, word_count = ?, modified_at = ?, analysis_status = 'pending' "
+                        "UPDATE notes SET title = ?, content = ?, tags = ?, word_count = ?, modified_at = ?, analysis_status = 'pending', "
+                        # 그래프 분석을 한 번이라도 요청한 노트만 다시 대기열에 (idle은 그대로)
+                        "graph_status = CASE WHEN graph_status = 'idle' THEN 'idle' ELSE 'pending' END "
                         "WHERE id = ?",
                         (title, body, json.dumps(tags), word_count, mtime, db_note["id"])
                     )

@@ -10,6 +10,7 @@ from db import get_conn
 from models import NoteCreate, NotePatch
 from services import vault
 from services import extraction
+from services import graph_extraction
 from services.tagparse import extract_tags
 from services.textnorm import norm_name
 
@@ -201,8 +202,8 @@ def create_note(body: NoteCreate, bg: BackgroundTasks):
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO notes (id, path, title, content, category_id, tags, "
-            "word_count, analysis_status, created_at, modified_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+            "word_count, analysis_status, graph_status, created_at, modified_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?, ?)",
             (nid, path, body.title, content, body.category_id,
              json.dumps(tags), word_count, now, now),
         )
@@ -253,6 +254,7 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
         word_count = len(new_content.split())
         content_changed = body.content is not None and new_content != current["content"]
         analysis_status = "pending" if content_changed else current["analysis_status"]
+        graph_status = "pending" if content_changed else row["graph_status"]
 
         # 플래그만 바꾸는 PATCH는 vault 파일과 modified_at을 건드리지 않는다
         now = _now() if content_touched else current["modified_at"]
@@ -265,10 +267,10 @@ def update_note(nid: str, body: NotePatch, bg: BackgroundTasks):
 
         conn.execute(
             "UPDATE notes SET title = ?, content = ?, category_id = ?, tags = ?, "
-            "word_count = ?, path = ?, modified_at = ?, analysis_status = ?, "
+            "word_count = ?, path = ?, modified_at = ?, analysis_status = ?, graph_status = ?, "
             "is_favorite = ?, is_archived = ? WHERE id = ?",
             (new_title, new_content, new_category, json.dumps(new_tags),
-             word_count, path, now, analysis_status,
+             word_count, path, now, analysis_status, graph_status,
              int(new_favorite), int(new_archived), nid),
         )
         if content_changed:
@@ -290,4 +292,6 @@ def delete_note(nid: str):
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM routes WHERE note_a = ? OR note_b = ?", (nid, nid))
+        graph_extraction.clear_note_graph(conn, nid)
+        graph_extraction.gc_orphans(conn)
     return Response(status_code=204)

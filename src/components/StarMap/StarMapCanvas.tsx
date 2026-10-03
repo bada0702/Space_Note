@@ -119,6 +119,10 @@ void main() {
 // 카메라 far plane(25000)을 넘지 않도록 간격 증가폭을 억제해야 한다 — 이전 계수
 // (floor 38, base 55 + k^0.6*14)는 800개 누적 시 반경이 40만 단위까지 폭증해
 // 카메라가 은하 전체를 far plane 밖에 두고 아무것도 렌더링하지 못하는 원인이었다.
+// 행성 공전 속도 배율과 상한 (프레임당 라디안)
+const ORBIT_SPEED_SCALE = 2.5
+const ORBIT_SPEED_MAX = 0.02
+
 function orbitRadius(sunR: number, j: number): number {
   // 첫 궤도는 태양 표면에 바짝 붙이고(스케일 배율 미적용), 노트가 쌓이며
   // 벌어지는 누적 간격만 ×10 스케일을 적용해 대형 성계에서도 far plane을
@@ -433,38 +437,77 @@ function makeNebulaTexture(r: number, g: number, b: number): THREE.Texture {
   return new THREE.CanvasTexture(canvas)
 }
 
+// 성도 배경 — 앱의 밤하늘 남색(#0D1524)보다 한 단계 깊게
+const SPACE_BG = 0x060b16
+
+// 은하 이름 라벨 — 성도의 지명처럼 작고 차분하게 (Pretendard, 약 11px).
+// 웹폰트는 쓰인 글자만 내려받으므로 해당 글자를 명시적으로 로드한 뒤 다시 그린다.
 function makeLabelSprite(name: string, color: THREE.Color): THREE.Sprite {
-  const text = name.toUpperCase()
+  const scale = 3 // 고해상도로 그려 축소 — 작은 글씨도 선명하게
+  const fontPx = 11 * scale
+  const font = `500 ${fontPx}px "Pretendard Variable", "Pretendard", sans-serif`
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
-  const font = '600 18px monospace'
-  ctx.font = font
-  const tw = ctx.measureText(text).width
-  const cw = Math.ceil(tw) + 28
-  const ch = 32
-  canvas.width = cw
-  canvas.height = ch
-  ctx.clearRect(0, 0, cw, ch)
-  ctx.font = font
-  const hex = `#${color.getHexString()}`
-  ctx.fillStyle = hex
-  ctx.globalAlpha = 0.85
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(text, cw / 2, ch / 2)
   const tex = new THREE.CanvasTexture(canvas)
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  // 라벨은 UI 역할 — 원거리 안개(fog)에 묻히거나 성운 먼지에 가리지 않게 한다
+  const mat = new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false, sizeAttenuation: false,
+    opacity: 0.88,
+  })
   const sprite = new THREE.Sprite(mat)
-  sprite.scale.set(cw * 0.1, ch * 0.1, 1)
+  // 은하 색은 아주 옅게만 — 글자는 거의 별빛 흰색
+  const tint = `#${color.clone().lerp(new THREE.Color(0xe6eaf2), 0.7).getHexString()}`
+
+  const draw = () => {
+    ctx.font = font
+    ;(ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${0.04 * fontPx}px`
+    const cw = Math.ceil(ctx.measureText(name).width) + 16 * scale
+    const ch = 24 * scale
+    canvas.width = cw
+    canvas.height = ch
+    ctx.font = font
+    ;(ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${0.04 * fontPx}px`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    // 얕은 그림자로 밝은 성운 위에서도 읽히게
+    ctx.shadowColor = 'rgba(6, 11, 22, 0.9)'
+    ctx.shadowBlur = 4 * scale
+    ctx.fillStyle = tint
+    ctx.fillText(name, cw / 2, ch / 2)
+    // 화면 높이 기준 고정 크기 (sizeAttenuation: false) — 캔버스 px 11*scale ≈ 화면 11px
+    const k = 1 / (scale * 745)
+    sprite.scale.set(cw * k, ch * k, 1)
+    tex.dispose() // 캔버스 크기가 바뀌면 GPU 텍스처를 새로 만들게 한다
+    tex.needsUpdate = true
+  }
+  draw()
+  document.fonts?.load(font, name).then(draw).catch(() => { /* 폴백 글꼴 유지 */ })
+
+  sprite.center.set(0.5, -0.35) // 항성 위로 약간 띄워 겹치지 않게
+  sprite.renderOrder = 10
   return sprite
 }
 
 export function StarMapCanvas() {
   const containerRef = useRef<HTMLDivElement>(null)
   const { categories } = useCategoriesStore()
-  const { notes, starMapFilter, openNote, setTab } = useNotesStore()
+  const { notes, starMapFilter, openNote, setTab, setStarMapFilter } = useNotesStore()
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
   const [tagNoteIds, setTagNoteIds] = useState<Set<string> | null>(null)
+  // 범례 접기 — 좁은 화면에서는 기본으로 접어 은하를 가리지 않게
+  const [legendOpen, setLegendOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sn-starmap-legend')
+      if (saved !== null) return saved === 'open'
+    } catch { /* 저장소 접근 불가 시 기본값 */ }
+    return window.innerWidth >= 1100
+  })
+  const toggleLegend = () => setLegendOpen(o => {
+    try { localStorage.setItem('sn-starmap-legend', o ? 'closed' : 'open') } catch { /* */ }
+    return !o
+  })
 
   // 태그 필터일 때는 해당 태그가 붙은 노트 id 집합을 먼저 가져와야
   // 아래 씬 구성 effect에서 필터링에 쓸 수 있다 (은하를 넘나드는 필터라
@@ -504,8 +547,8 @@ export function StarMapCanvas() {
 
     // ── Scene ────────────────────────────────────────────────
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x02030a)
-    scene.fog = new THREE.FogExp2(0x02030a, 0.00004)
+    scene.background = new THREE.Color(SPACE_BG)
+    scene.fog = new THREE.FogExp2(SPACE_BG, 0.00004)
 
     // 카메라 초점: 전체 뷰는 모든 은하의 중심점(특정 은하에 치우치지 않게)
     let lookTarget = new THREE.Vector3(0, 0, 0)
@@ -951,7 +994,12 @@ export function StarMapCanvas() {
           selfRotY = 0.015       // 빠른 자전 속도
         }
 
-        const speed = (1.1 / Math.pow(radius / 10, 1.5)) * speedMultiplier
+        // 케플러 법칙(r^-1.5)에 전체 배율을 곱해 바깥 행성도 움직임이 보이게 하고,
+        // 안쪽 행성은 상한을 둬 너무 빨리 돌지 않게 한다 (0.02rad/프레임 ≈ 한 바퀴 5초)
+        const speed = Math.min(
+          ORBIT_SPEED_MAX,
+          (1.1 / Math.pow(radius / 10, 1.5)) * speedMultiplier * ORBIT_SPEED_SCALE,
+        )
 
         const p = center.clone()
           .addScaledVector(e1, radius * Math.cos(angle))
@@ -1534,40 +1582,86 @@ export function StarMapCanvas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories, notes, starMapFilter, tagNoteIds])
 
+  // ── HUD 데이터 ──
+  const countByCat = new Map<string, number>()
+  notes.forEach(n => { if (n.category_id) countByCat.set(n.category_id, (countByCat.get(n.category_id) ?? 0) + 1) })
+  const uncategorizedCount = notes.filter(n => !n.category_id).length
+  const focusedCat = starMapFilter?.type === 'category' ? categories.find(c => c.id === starMapFilter.value) : undefined
+  const hudTitle = focusedCat ? focusedCat.name : starMapFilter?.type === 'tag' ? `#${starMapFilter.value}` : '전체 성도'
+  const hudSub = focusedCat
+    ? `노트 ${countByCat.get(focusedCat.id) ?? 0}개`
+    : `노트 ${notes.length}개, 은하 ${categories.length}개`
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    // 성도는 라이트 모드에서도 밤하늘 — 다크 토큰을 강제 적용
+    <div className="dark sn-starmap" style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div
         ref={containerRef}
-        style={{ width: '100%', height: '100%', background: '#02030a', overflow: 'hidden' }}
+        style={{ width: '100%', height: '100%', background: '#060b16', overflow: 'hidden' }}
       />
 
+      {/* 성도 범례 */}
+      <section className="sn-atlas" aria-label="성도 범례">
+        <button
+          className="sn-atlas-head"
+          onClick={toggleLegend}
+          aria-expanded={legendOpen}
+          title={legendOpen ? '범례 접기' : '범례 펼치기'}
+        >
+          <span className="sn-atlas-titles">
+            <h2>{hudTitle}</h2>
+            <p>{hudSub}</p>
+          </span>
+          <span className="sn-atlas-caret" aria-hidden="true">{legendOpen ? '▴' : '▾'}</span>
+        </button>
+        {legendOpen && <>
+        <ul className="sn-atlas-list">
+          {categories.map(cat => {
+            const active = focusedCat?.id === cat.id
+            return (
+              <li key={cat.id}>
+                <button
+                  className="sn-atlas-item"
+                  aria-pressed={active}
+                  onClick={() => setStarMapFilter(active ? null : { type: 'category', value: cat.id })}
+                  title={active ? '전체 성도로 돌아가기' : `${cat.name} 은하로 이동`}
+                >
+                  <span className="sn-atlas-dot" style={{ background: cat.color ?? '#94a3b8', color: cat.color ?? '#94a3b8' }} />
+                  <span className="sn-atlas-name">{cat.name}</span>
+                  <span className="sn-atlas-count">{countByCat.get(cat.id) ?? 0}</span>
+                </button>
+              </li>
+            )
+          })}
+          {uncategorizedCount > 0 && !focusedCat && (
+            <li>
+              <div className="sn-atlas-item is-static">
+                <span className="sn-atlas-dot is-rogue" />
+                <span className="sn-atlas-name">떠돌이 행성 (미분류)</span>
+                <span className="sn-atlas-count">{uncategorizedCount}</span>
+              </div>
+            </li>
+          )}
+        </ul>
+        {starMapFilter && (
+          <button className="sn-atlas-reset" onClick={() => setStarMapFilter(null)}>
+            전체 성도 보기
+          </button>
+        )}
+        </>}
+      </section>
+
       {tooltip && (
-        <div style={{
-          position: 'absolute',
-          left: tooltip.x + 16,
-          top: tooltip.y - 38,
-          background: 'rgba(2,4,10,0.92)',
-          border: '1px solid rgba(120,140,220,0.35)',
-          borderRadius: 7,
-          padding: '5px 12px',
-          fontSize: 12,
-          color: '#dde0f5',
-          pointerEvents: 'none',
-          zIndex: 10,
-          whiteSpace: 'nowrap',
-          letterSpacing: '0.03em',
-          boxShadow: '0 2px 14px rgba(0,0,0,0.55)',
-        }}>
+        <div className="sn-star-tip" style={{ left: tooltip.x + 16, top: tooltip.y - 40 }}>
           {tooltip.title}
         </div>
       )}
 
-      <div style={{
-        position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-        fontSize: 10, color: 'rgba(160,180,220,0.28)', letterSpacing: 2,
-        pointerEvents: 'none', whiteSpace: 'nowrap',
-      }}>
-        {starMapFilter?.type === 'category' ? '현재 은하 성도' : starMapFilter?.type === 'tag' ? `#${starMapFilter.value} 성도` : '전체 성도'} · 드래그 회전 · Ctrl+드래그 이동 · 스크롤 줌 · 클릭으로 노트 열기
+      <div className="sn-controls" aria-hidden="true">
+        <span><kbd>드래그</kbd> 회전</span>
+        <span><kbd>Ctrl</kbd>+<kbd>드래그</kbd> 이동</span>
+        <span><kbd>스크롤</kbd> 확대</span>
+        <span><kbd>클릭</kbd> 노트 열기</span>
       </div>
     </div>
   )

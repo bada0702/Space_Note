@@ -1,4 +1,6 @@
-import type { AIModel, AIChatMessage, AISettings } from '../types'
+import type {
+  AIModel, AIChatMessage, AISettings, ChatSource, GraphStatus, ConversationSummary, ConversationDetail,
+} from '../types'
 import { API_BASE, authHeaders, apiFetch } from './client'
 
 export const aiApi = {
@@ -10,6 +12,24 @@ export const aiApi = {
     await apiFetch('/ai/settings', { method: 'PATCH', body: JSON.stringify(data) })
   },
 
+  // 대화 기록
+  listConversations: (): Promise<ConversationSummary[]> => apiFetch('/conversations'),
+  getConversation: (id: string): Promise<ConversationDetail> =>
+    apiFetch(`/conversations/${encodeURIComponent(id)}`),
+  saveConversation: (id: string, data: {
+    model: string
+    messages: { role: string; content: string; sources?: ChatSource[]; error?: string }[]
+  }): Promise<ConversationSummary> =>
+    apiFetch(`/conversations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteConversation: async (id: string): Promise<void> => {
+    await apiFetch(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  // 지식 그래프
+  getGraphStatus: (): Promise<GraphStatus> => apiFetch<GraphStatus>('/graph/status'),
+  rebuildGraph: (): Promise<unknown> => apiFetch('/graph/rebuild', { method: 'POST' }),
+  retryFailedGraph: (): Promise<unknown> => apiFetch('/graph/retry-failed', { method: 'POST' }),
+
   async *streamChat(params: {
     model: AIModel
     messages: Pick<AIChatMessage, 'role' | 'content'>[]
@@ -17,7 +37,7 @@ export const aiApi = {
     contextCategoryId?: string
     useRag: boolean
     useWiki: boolean
-  }): AsyncGenerator<{ text?: string; error?: string }> {
+  }): AsyncGenerator<{ text?: string; error?: string; sources?: ChatSource[] }> {
     const resp = await fetch(`${API_BASE}/ai/chat`, {
       method: 'POST',
       headers: authHeaders(),

@@ -56,3 +56,72 @@ def test_stream_chat_raises_without_key(client):
     assert gemini_client.has_api_key() is False
     with pytest.raises(ValueError):
         list(gemini_client.stream_chat("gemini-2.5-flash", "sys", [{"role": "user", "content": "hi"}]))
+
+
+class _FakeStream:
+    """httpx.stream(...) 컨텍스트 매니저 대역."""
+    def __init__(self, status_code, body=b"", lines=()):
+        self.status_code = status_code
+        self._body = body
+        self._lines = lines
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self._body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"status {self.status_code}")
+
+    def iter_lines(self):
+        return iter(self._lines)
+
+
+def _quota_body(retry_delay):
+    import json
+    return json.dumps({"error": {"code": 429, "details": [
+        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": retry_delay},
+    ]}}).encode()
+
+
+def test_stream_chat_fails_fast_when_daily_quota_exhausted(client, monkeypatch):
+    calls = {"n": 0}
+    sleeps = []
+
+    def fake_stream(*a, **kw):
+        calls["n"] += 1
+        return _FakeStream(429, _quota_body("45532s"))
+
+    monkeypatch.setattr(gemini_client.httpx, "stream", fake_stream)
+    monkeypatch.setattr(gemini_client.time, "sleep", sleeps.append)
+    monkeypatch.setattr(gemini_client, "_api_key", lambda: "fake-key")
+
+    with pytest.raises(ValueError) as e:
+        list(gemini_client.stream_chat("gemini-3.5-flash", "sys", [{"role": "user", "content": "hi"}]))
+    # 하루 한도 소진(재시도 대기 12시간대)이면 기다리지 않고 바로 알린다
+    assert calls["n"] == 1 and sleeps == []
+    assert "12시간" in str(e.value)
+
+
+def test_stream_chat_retries_short_rate_limit(client, monkeypatch):
+    calls = {"n": 0}
+    sleeps = []
+
+    def fake_stream(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return _FakeStream(429, _quota_body("5s"))
+        return _FakeStream(200, lines=['data: {"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}'])
+
+    monkeypatch.setattr(gemini_client.httpx, "stream", fake_stream)
+    monkeypatch.setattr(gemini_client.time, "sleep", sleeps.append)
+    monkeypatch.setattr(gemini_client, "_api_key", lambda: "fake-key")
+
+    out = list(gemini_client.stream_chat("gemini-3.5-flash", "sys", [{"role": "user", "content": "hi"}]))
+    assert out == ["hi"]
+    assert sleeps == [5.0]

@@ -42,6 +42,25 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatSource(BaseModel):
+    id: str
+    title: str
+    path: str = ""
+
+
+class SavedChatMessage(BaseModel):
+    role: str
+    content: str
+    sources: list[ChatSource] = []
+    error: Optional[str] = None
+
+
+class ConversationSave(BaseModel):
+    title: Optional[str] = None
+    model: str = ""
+    messages: list[SavedChatMessage]
+
+
 class ChatRequest(BaseModel):
     model: str
     messages: list[ChatMessage]

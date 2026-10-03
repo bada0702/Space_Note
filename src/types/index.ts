@@ -27,6 +27,7 @@ export type Theme = 'dark' | 'light'
 export type AIModel =
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
+  | 'gemini-3.5-flash-lite'
   | 'gemini-3.5-flash'
   | 'gemini-3.6-flash'
   | 'gemini-3.7-flash'
@@ -34,12 +35,45 @@ export type AIModel =
   | 'gemini-2.5-flash'
   | (string & {})
 
+/** RAG 답변의 근거 노트 — path는 노트를 고른 이유(지식 그래프 관계 경로 또는 키워드 일치). */
+export interface ChatSource {
+  id: string
+  title: string
+  path: string
+}
+
 export interface AIChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
   isStreaming?: boolean
   error?: string
+  sources?: ChatSource[]
+}
+
+/** 저장된 AI 대화 목록 항목 */
+export interface ConversationSummary {
+  id: string
+  title: string
+  model: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: { role: 'user' | 'assistant'; content: string; sources: ChatSource[]; error: string | null }[]
+}
+
+export interface GraphStatus {
+  idle: number
+  pending: number
+  done: number
+  failed: number
+  total: number
+  concepts: number
+  relations: number
+  rate_per_minute: number
+  eta_minutes: number
 }
 
 export interface ChatContext {

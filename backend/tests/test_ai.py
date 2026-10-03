@@ -176,3 +176,24 @@ def test_rag_excerpt_centers_on_keyword(client, monkeypatch):
         "use_rag": True,
     })
     assert "핵심키워드 설명 본문" in system
+
+
+def test_retrieve_requires_auth(client):
+    assert client.get("/ai/retrieve", params={"q": "x"}).status_code == 401
+
+
+def test_retrieve_returns_ranked_notes_without_recent_fallback(client):
+    note = client.post(
+        "/notes", json={"title": "XRDP 세션 종료 로그", "content": "세션이 끊긴 원인"}, headers=AUTH
+    ).json()
+    client.post("/notes", json={"title": "점심 메뉴", "content": "김치찌개"}, headers=AUTH)
+
+    r = client.get("/ai/retrieve", params={"q": "XRDP 세션이 왜 끊겨?"}, headers=AUTH)
+    assert r.status_code == 200
+    body = r.json()
+    assert body[0]["id"] == note["id"]
+    assert "세션이 끊긴 원인" in body[0]["excerpt"]
+    assert all(n["title"] != "점심 메뉴" for n in body)
+
+    r = client.get("/ai/retrieve", params={"q": "존재하지않는키워드"}, headers=AUTH)
+    assert r.json() == []

@@ -11,6 +11,7 @@ from services.anthropic_client import _EXTRACT_PROMPT, parse_entities
 
 # gemini-2.x는 신규 사용자/프로젝트에 더 이상 제공되지 않으므로(404 Not Found) 3.6-flash 이상 지원
 ALLOWED_CHAT_MODELS = {
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
     "gemini-3.6-flash",
     "gemini-3.7-flash",
@@ -18,7 +19,8 @@ ALLOWED_CHAT_MODELS = {
     "gemini-flash-latest",
     "gemini-2.5-flash",
 }
-EXTRACT_MODEL = "gemini-3.5-flash"
+# 채팅(gemini-3.5-flash-lite)과 무료 한도를 나눠 쓰도록 별도 모델 사용
+EXTRACT_MODEL = "gemini-3.1-flash-lite"
 _BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
@@ -80,6 +82,32 @@ def extract_entities(content: str) -> list[dict]:
     return parse_entities(text)
 
 
+MAX_CHAT_RETRIES = 3
+MAX_CHAT_RETRY_WAIT = 30.0  # 이보다 오래 기다려야 하면 재시도하지 않는다
+
+
+def _retry_delay(body: bytes) -> float | None:
+    """429 응답 본문의 RetryInfo.retryDelay("45s")를 초 단위로."""
+    try:
+        details = json.loads(body).get("error", {}).get("details", [])
+    except (ValueError, AttributeError):
+        return None
+    for d in details:
+        if d.get("@type", "").endswith("RetryInfo"):
+            try:
+                return float(str(d.get("retryDelay", "")).rstrip("s"))
+            except ValueError:
+                return None
+    return None
+
+
+def _human_wait(seconds: float) -> str:
+    h, m = int(seconds // 3600), int(seconds % 3600 // 60)
+    if h:
+        return f"약 {h}시간 {m}분"
+    return f"약 {max(m, 1)}분"
+
+
 def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     """텍스트 델타를 순차 yield. 모델/키 검증 실패 시 예외."""
     if model not in ALLOWED_CHAT_MODELS:
@@ -90,10 +118,8 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
 
     # 무료 등급 분당 한도(429) 대응: 아직 응답을 하나도 스트리밍하지 않은
     # 상태에서만 재시도 — 첫 청크가 나간 뒤에는 재요청 시 내용이 중복될 수 있다.
-    delays = [0, 8, 16, 32]
-    for i, delay in enumerate(delays):
-        if delay:
-            time.sleep(delay)
+    # 응답의 retryDelay가 길면(하루 한도 소진 등) 기다리지 않고 바로 알린다.
+    for attempt in range(MAX_CHAT_RETRIES + 1):
         with httpx.stream(
             "POST",
             f"{_BASE}/{model}:streamGenerateContent",
@@ -103,8 +129,15 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
             timeout=120,
         ) as resp:
             if resp.status_code == 429:
-                if i == len(delays) - 1:
+                delay = _retry_delay(resp.read())
+                if delay is not None and delay > MAX_CHAT_RETRY_WAIT:
+                    raise ValueError(
+                        f"{model} 무료 사용 한도를 모두 썼습니다 — {_human_wait(delay)} 후 다시 시도하거나 "
+                        "다른 모델(예: Flash-Lite)을 선택하세요"
+                    )
+                if attempt == MAX_CHAT_RETRIES:
                     raise ValueError("Gemini API 요청 한도(429)를 초과했습니다 — 잠시 후 다시 시도하세요")
+                time.sleep(delay if delay is not None else 8.0 * (attempt + 1))
                 continue
             resp.raise_for_status()
             for line in resp.iter_lines():

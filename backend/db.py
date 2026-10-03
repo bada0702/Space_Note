@@ -47,6 +47,53 @@ CREATE TABLE IF NOT EXISTS routes (
   created_at TEXT NOT NULL,
   UNIQUE(note_a, note_b)
 );
+CREATE TABLE IF NOT EXISTS concepts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  norm TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL DEFAULT '개념',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS concept_aliases (
+  norm TEXT PRIMARY KEY,
+  alias TEXT NOT NULL,
+  concept_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_concept_aliases_concept ON concept_aliases(concept_id);
+CREATE TABLE IF NOT EXISTS note_concepts (
+  note_id TEXT NOT NULL,
+  concept_id TEXT NOT NULL,
+  weight INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (note_id, concept_id)
+);
+CREATE INDEX IF NOT EXISTS idx_note_concepts_concept ON note_concepts(concept_id);
+CREATE TABLE IF NOT EXISTS relations (
+  id TEXT PRIMARY KEY,
+  subj_id TEXT NOT NULL,
+  pred TEXT NOT NULL,
+  obj_id TEXT NOT NULL,
+  note_id TEXT NOT NULL,
+  UNIQUE(subj_id, pred, obj_id, note_id)
+);
+CREATE INDEX IF NOT EXISTS idx_relations_subj ON relations(subj_id);
+CREATE INDEX IF NOT EXISTS idx_relations_obj ON relations(obj_id);
+CREATE INDEX IF NOT EXISTS idx_relations_note ON relations(note_id);
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  conversation_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sources TEXT NOT NULL DEFAULT '[]',
+  error TEXT,
+  PRIMARY KEY (conversation_id, seq)
+);
 CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   anthropic_api_key TEXT NOT NULL DEFAULT '',
@@ -85,6 +132,13 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE notes ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0"
             )
+        # 마이그레이션: 지식 그래프 추출 상태 (기존 노트는 idle — 사용자가 일괄 분석을 눌러야 처리)
+        if "graph_status" not in note_cols:
+            conn.execute(
+                "ALTER TABLE notes ADD COLUMN graph_status TEXT NOT NULL DEFAULT 'idle'"
+            )
+        if "graph_hash" not in note_cols:
+            conn.execute("ALTER TABLE notes ADD COLUMN graph_hash TEXT")
         
         # settings 테이블 마이그레이션
         settings_cols = {r[1] for r in conn.execute("PRAGMA table_info(settings)")}

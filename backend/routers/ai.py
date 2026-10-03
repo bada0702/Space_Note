@@ -1,13 +1,14 @@
 import json
 import math
 import re
+from typing import Optional
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from db import get_conn
 from models import SettingsPatch, ChatRequest
-from services import anthropic_client, gemini_client, ollama_client
+from services import anthropic_client, gemini_client, graph_retrieval, ollama_client
 from services.extraction import kiwi, is_korean_stopword_or_ending, strip_korean_particles
 
 router = APIRouter()
@@ -15,6 +16,8 @@ router = APIRouter()
 RAG_LIMIT = 5
 RAG_EXCERPT = 1200
 RAG_MAX_KEYWORDS = 8
+GRAPH_WEIGHT = 0.6
+KEYWORD_WEIGHT = 0.4
 
 
 def _get_settings() -> dict:
@@ -78,13 +81,60 @@ def _query_keywords(text: str) -> list[str]:
 
 def _excerpt(content: str, keywords: list[str]) -> str:
     lower = content.casefold()
-    hits = [p for p in (lower.find(k.casefold()) for k in keywords) if p >= 0]
+    hits = [p for p in (lower.find(k.casefold()) for k in keywords if k) if p >= 0]
     start = max(0, min(hits) - RAG_EXCERPT // 4) if hits else 0
     return content[start:start + RAG_EXCERPT]
 
 
-def _retrieve_notes(conn, query: str, category_id, exclude_id) -> list:
-    """질문 키워드로 관련 노트를 점수화해 고른다. 매칭이 없으면 최근 노트로 대체."""
+def _keyword_scores(conn, keywords: list[str], scope: str, scope_params: list) -> dict:
+    """질문 키워드로 노트를 점수화 → {note_id: (점수, 가장 크게 기여한 키워드, row)}."""
+    if not keywords:
+        return {}
+    cond = " OR ".join("title LIKE ? OR content LIKE ?" for _ in keywords)
+    like_params = [p for k in keywords for p in (f"%{k}%", f"%{k}%")]
+    rows = conn.execute(
+        f"SELECT id, title, content, modified_at FROM notes WHERE {scope} AND ({cond})",
+        (*scope_params, *like_params),
+    ).fetchall()
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM notes WHERE {scope}", scope_params
+    ).fetchone()[0]
+
+    docs = [
+        (r, (r["title"] or "").casefold(), (r["content"] or "").casefold())
+        for r in rows
+    ]
+    # 흔한 단어("방법", "정리")가 드문 고유명사를 압도하지 않도록 IDF 가중
+    idf = {}
+    for k in keywords:
+        kl = k.casefold()
+        df = sum(1 for _, t, c in docs if kl in t or kl in c)
+        idf[k] = math.log(1 + total / df) if df else 0.0
+
+    scored = {}
+    for r, title, content in docs:
+        score, top_kw, top = 0.0, "", 0.0
+        for k in keywords:
+            kl = k.casefold()
+            part = 3 * idf[k] if kl in title else 0.0
+            count = content.count(kl)
+            if count:
+                part += idf[k] * (1 + math.log(count))
+            score += part
+            if part > top:
+                top_kw, top = k, part
+        if score > 0:
+            scored[r["id"]] = (score, top_kw, r)
+    return scored
+
+
+def _retrieve_notes(conn, query: str, category_id, exclude_id, fallback_recent: bool = True,
+                    context_note_id: Optional[str] = None) -> list[dict]:
+    """질문과 관련된 노트를 고른다 → [{id, title, excerpt, reason}].
+
+    지식 그래프 점수(개념 관계를 따라 확장)와 키워드 점수를 0.6 : 0.4로 합친다.
+    그래프 출발 개념이 없으면 키워드만, 그것도 없으면 최근 노트로 대체.
+    """
     scope = "is_archived = 0"
     scope_params: list = []
     if category_id:
@@ -95,56 +145,68 @@ def _retrieve_notes(conn, query: str, category_id, exclude_id) -> list:
         scope_params.append(exclude_id)
 
     keywords = _query_keywords(query)
-    if keywords:
-        cond = " OR ".join("title LIKE ? OR content LIKE ?" for _ in keywords)
-        like_params = [p for k in keywords for p in (f"%{k}%", f"%{k}%")]
-        rows = conn.execute(
-            f"SELECT id, title, content, modified_at FROM notes WHERE {scope} AND ({cond})",
-            (*scope_params, *like_params),
-        ).fetchall()
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM notes WHERE {scope}", scope_params
-        ).fetchone()[0]
+    kw = _keyword_scores(conn, keywords, scope, scope_params)
+    graph = graph_retrieval.graph_note_scores(
+        conn, query, category_id, exclude_id, context_note_id=context_note_id
+    )
 
-        docs = [
-            (r, (r["title"] or "").casefold(), (r["content"] or "").casefold())
-            for r in rows
-        ]
-        # 흔한 단어("방법", "정리")가 드문 고유명사를 압도하지 않도록 IDF 가중
-        idf = {}
-        for k in keywords:
-            kl = k.casefold()
-            df = sum(1 for _, t, c in docs if kl in t or kl in c)
-            idf[k] = math.log(1 + total / df) if df else 0.0
+    if kw or graph:
+        kw_max = max((v[0] for v in kw.values()), default=0.0) or 1.0
+        g_max = max((v.score for v in graph.values()), default=0.0) or 1.0
+        combined = []
+        for nid in set(kw) | set(graph):
+            k_part = kw[nid][0] / kw_max if nid in kw else 0.0
+            g_part = graph[nid].score / g_max if nid in graph else 0.0
+            score = (GRAPH_WEIGHT * g_part + KEYWORD_WEIGHT * k_part) if graph else k_part
+            combined.append((score, nid))
+        combined.sort(reverse=True)
+        top = [nid for _, nid in combined[:RAG_LIMIT]]
 
-        scored = []
-        for r, title, content in docs:
-            score = 0.0
-            for k in keywords:
-                kl = k.casefold()
-                if kl in title:
-                    score += 3 * idf[k]
-                count = content.count(kl)
-                if count:
-                    score += idf[k] * (1 + math.log(count))
-            if score > 0:
-                scored.append((score, r["modified_at"] or "", r))
-        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-        if scored:
-            return [
-                (r["title"], _excerpt(r["content"] or "", keywords))
-                for _, _, r in scored[:RAG_LIMIT]
-            ]
+        # 그래프로만 뽑힌 노트는 본문을 따로 읽는다
+        rows = {nid: kw[nid][2] for nid in top if nid in kw}
+        missing = [nid for nid in top if nid not in rows]
+        if missing:
+            ph = ",".join("?" * len(missing))
+            for r in conn.execute(
+                f"SELECT id, title, content FROM notes WHERE id IN ({ph})", missing
+            ):
+                rows[r["id"]] = r
+
+        out = []
+        for nid in top:
+            r = rows[nid]
+            if nid in graph:
+                hit = graph[nid].concept
+                reason = graph_retrieval.format_path(hit)
+                terms = [*graph_retrieval.path_terms(hit), *keywords]
+            else:
+                reason = f"키워드 '{kw[nid][1]}' 일치"
+                terms = keywords
+            out.append({
+                "id": nid,
+                "title": r["title"],
+                "excerpt": _excerpt(r["content"] or "", terms),
+                "reason": reason,
+            })
+        return out
+
+    if not fallback_recent:
+        return []
 
     rows = conn.execute(
-        f"SELECT title, content FROM notes WHERE {scope} ORDER BY modified_at DESC LIMIT ?",
+        f"SELECT id, title, content FROM notes WHERE {scope} ORDER BY modified_at DESC LIMIT ?",
         (*scope_params, RAG_LIMIT),
     ).fetchall()
-    return [(r["title"], (r["content"] or "")[:RAG_EXCERPT]) for r in rows]
+    return [
+        {"id": r["id"], "title": r["title"], "excerpt": (r["content"] or "")[:RAG_EXCERPT],
+         "reason": "최근 노트"}
+        for r in rows
+    ]
 
 
-def _build_system(req: ChatRequest) -> str:
-    """컨텍스트(현재 노트/RAG/위키)를 system 프롬프트로 구성."""
+def _build_system(req: ChatRequest) -> tuple[str, list[dict]]:
+    """컨텍스트(현재 노트/RAG/위키)를 system 프롬프트로 구성 → (프롬프트, 근거 노트 목록)."""
+    sources: list[dict] = []
     parts = [
         "You are SpaceNote's helpful assistant. "
         "Answer in the same language the user writes in."
@@ -163,11 +225,15 @@ def _build_system(req: ChatRequest) -> str:
             user_turns = [m.content for m in req.messages if m.role == "user"]
             query = "\n".join(user_turns[-2:])
             notes = _retrieve_notes(
-                conn, query, req.context_category_id, req.context_note_id
+                conn, query, req.context_category_id, req.context_note_id,
+                context_note_id=req.context_note_id,
             )
-            ctx = "\n\n".join(f"# {title}\n{body}" for title, body in notes)
+            ctx = "\n\n".join(
+                f"# {n['title']}\n(선택 근거: {n['reason']})\n{n['excerpt']}" for n in notes
+            )
             if ctx:
                 parts.append("[참고 노트]\n" + ctx)
+            sources = [{"id": n["id"], "title": n["title"], "path": n["reason"]} for n in notes]
 
         if req.use_wiki:
             rows = conn.execute(
@@ -177,12 +243,25 @@ def _build_system(req: ChatRequest) -> str:
             if titles:
                 parts.append("[위키 노트 목록]\n" + titles)
 
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), sources
+
+
+@router.get("/ai/retrieve")
+def retrieve(q: str = "", category_id: Optional[str] = None):
+    """외부 에이전트(aibot 등)용: 질문과 관련된 노트를 점수순으로 반환."""
+    if not q.strip():
+        return []
+    with get_conn() as conn:
+        notes = _retrieve_notes(conn, q, category_id, None, fallback_recent=False)
+    return [
+        {"id": n["id"], "title": n["title"], "excerpt": n["excerpt"], "reason": n["reason"]}
+        for n in notes
+    ]
 
 
 @router.post("/ai/chat")
 def chat(req: ChatRequest):
-    system = _build_system(req)
+    system, sources = _build_system(req)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
     # 모델 이름으로 제공자 선택 (gemini-* → Google, claude-* → Anthropic, 그 외 → Ollama)
@@ -195,6 +274,9 @@ def chat(req: ChatRequest):
 
     def gen():
         try:
+            # 답변 텍스트보다 먼저 근거 노트를 한 번 보낸다 (화면에서 답변 아래에 표시)
+            if sources:
+                yield f"data: {json.dumps({'sources': sources}, ensure_ascii=False)}\n"
             for text in client.stream_chat(req.model, system, messages):
                 yield f"data: {json.dumps({'text': text})}\n"
             yield "data: [DONE]\n"

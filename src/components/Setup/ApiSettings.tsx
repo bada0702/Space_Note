@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { GraphSettings } from './GraphSettings'
 import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
@@ -22,8 +23,7 @@ async function pickFolderViaTauri(): Promise<string | null> {
 }
 
 const MODEL_OPTIONS = [
-  { value: 'claude-sonnet-4-6',   label: 'Claude Sonnet 4.6' },
-  { value: 'claude-haiku-4-5',    label: 'Claude Haiku 4.5' },
+  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
   { value: 'gemini-3.5-flash',    label: 'Gemini 3.5 Flash' },
   { value: 'gemini-3.8-flash',    label: 'Gemini 3.8 Flash' },
 ]
@@ -112,12 +112,12 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '6px 10px', borderRadius: 5,
     background: 'var(--bg-input)', color: 'var(--text-primary)',
-    border: '1px solid var(--border)', fontSize: 12, fontFamily: 'monospace',
+    border: '1px solid var(--border)', fontSize: 13, fontFamily: 'var(--font-mono)',
     outline: 'none', boxSizing: 'border-box',
   }
   const labelStyle: React.CSSProperties = {
-    fontSize: 11, color: 'var(--text-secondary)', letterSpacing: '0.06em',
-    textTransform: 'uppercase', marginBottom: 4, display: 'block',
+    fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)',
+    marginBottom: 6, display: 'block',
   }
 
   return (
@@ -182,7 +182,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
                   color: 'var(--text-primary)',
                   border: '1px solid var(--border)',
                   borderRadius: 5,
-                  fontSize: 11,
+                  fontSize: 12,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
@@ -191,7 +191,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               </button>
             </div>
             {folderPickerHint && (
-              <p style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
                 이 환경(웹 브라우저)에서는 폴더 선택 대화상자를 지원하지 않아요 — 위 입력창에 서버의 절대경로를 직접 입력하세요.
               </p>
             )}
@@ -227,7 +227,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
             <label htmlFor="default_model" style={labelStyle}>기본 모델</label>
             <select
               id="default_model"
-              value={form.default_model ?? 'claude-sonnet-4-6'}
+              value={form.default_model ?? 'gemini-3.5-flash-lite'}
               onChange={e => setField('default_model', e.target.value)}
               style={{ ...inputStyle, cursor: 'pointer' }}
             >
@@ -246,6 +246,9 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               )}
             </select>
           </div>
+
+          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+          <GraphSettings />
         </div>
 
         <button

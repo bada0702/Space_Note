@@ -14,6 +14,8 @@ export default defineConfig(async () => ({
     host: true,
     port: 1420,
     strictPort: true,
+    // 외부 도메인(iptime DDNS)으로 접속할 때 Vite 호스트 검사에 막히지 않도록 허용
+    allowedHosts: ["chojungwon.iptime.org"],
     https: hasCert
       ? {
           key: fs.readFileSync(keyPath),

@@ -78,11 +78,24 @@ export function EditorTabs() {
     w.print()
   }
 
+  const views: { id: EditorTab; label: string; onClick: () => void }[] = [
+    { id: 'edit', label: '편집', onClick: () => setTab('edit') },
+    { id: 'preview', label: '미리보기', onClick: () => setTab('preview') },
+    {
+      id: 'starmap',
+      label: '성도',
+      onClick: () => {
+        setStarMapFilter(activeNote?.category_id ? { type: 'category', value: activeNote.category_id } : null)
+        setTab('starmap')
+      },
+    },
+  ]
+
   return (
-    <div className="glass glass-bar flex items-center px-4 gap-3">
-      {/* 제목 입력 + 기항지 토글 + 날짜 시간 */}
-      <div className="flex flex-col py-3 min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
+    <div className="glass glass-bar flex items-center gap-4" style={{ padding: '12px 20px 12px 24px', flexWrap: 'wrap' }}>
+      {/* 제목 + 기항지 + 날짜 */}
+      <div className="flex flex-col min-w-0" style={{ flex: '1 1 280px' }}>
+        <div className="flex items-center gap-2">
           <input
             ref={titleRef}
             value={titleValue}
@@ -90,9 +103,12 @@ export function EditorTabs() {
             onBlur={handleTitleBlur}
             onKeyDown={handleTitleKeyDown}
             placeholder="제목 없음"
+            aria-label="노트 제목"
             style={{
-              fontSize: '14px',
-              fontWeight: 600,
+              fontFamily: 'var(--font-title)',
+              fontSize: 'var(--fs-xl)',
+              fontWeight: 700,
+              lineHeight: 1.3,
               color: 'var(--text-primary)',
               background: 'transparent',
               border: 'none',
@@ -104,119 +120,38 @@ export function EditorTabs() {
             }}
           />
           <button
+            className="sn-icon-btn"
             title={activeNote.is_favorite ? '기항지 해제' : '기항지로 지정'}
+            aria-label={activeNote.is_favorite ? '기항지 해제' : '기항지로 지정'}
+            aria-pressed={!!activeNote.is_favorite}
             onClick={() => toggleFavorite(activeNote.id)}
-            style={{
-              fontSize: '14px',
-              color: activeNote.is_favorite ? '#E8B23A' : 'var(--text-secondary)',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              opacity: activeNote.is_favorite ? 1 : 0.55,
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
+            style={{ width: 30, height: 30, fontSize: 18, color: activeNote.is_favorite ? 'var(--star)' : 'var(--text-tertiary)' }}
           >
             {activeNote.is_favorite ? '★' : '☆'}
           </button>
         </div>
-        <div className="flex items-center gap-3" style={{ fontSize: '10px', color: 'var(--text-secondary)', opacity: 0.8, marginTop: '2px' }}>
-          <span>생성: {formatDateTime(activeNote.created_at)}</span>
-          <span>수정: {formatDateTime(activeNote.modified_at)}</span>
+        <div
+          className="flex items-center gap-3"
+          style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tertiary)', marginTop: '3px', fontVariantNumeric: 'tabular-nums' }}
+        >
+          <span>만든 날 {formatDateTime(activeNote.created_at)}</span>
+          <span>고친 날 {formatDateTime(activeNote.modified_at)}</span>
         </div>
       </div>
 
-      {/* 탭 버튼 */}
-      <div className="flex items-center gap-0 flex-shrink-0" style={{ flexShrink: 0 }}>
-        {/* 1. 편집 */}
-        <button
-          onClick={() => setTab('edit')}
-          className="px-3 py-2.5"
-          style={{
-            fontSize: '12px',
-            color: activeTab === 'edit' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'edit' ? '2px solid var(--accent-line)' : '2px solid transparent',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          편집
-        </button>
+      {/* 보기 전환 */}
+      <div className="sn-segment" role="group" aria-label="보기 방식">
+        {views.map(v => (
+          <button key={v.id} aria-pressed={activeTab === v.id} onClick={v.onClick}>
+            {v.label}
+          </button>
+        ))}
+      </div>
 
-        {/* 2. 미리보기 */}
-        <button
-          onClick={() => setTab('preview')}
-          className="px-3 py-2.5"
-          style={{
-            fontSize: '12px',
-            color: activeTab === 'preview' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'preview' ? '2px solid var(--accent-line)' : '2px solid transparent',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          미리보기
-        </button>
-
-        {/* 3. 인쇄 */}
-        <button
-          onClick={handlePrint}
-          className="px-3 py-2.5"
-          style={{
-            fontSize: '12px',
-            color: 'var(--text-secondary)',
-            borderBottom: '2px solid transparent',
-            whiteSpace: 'nowrap',
-          }}
-          onMouseEnter={e => {
-            ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'
-          }}
-          onMouseLeave={e => {
-            ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'
-          }}
-        >
-          인쇄
-        </button>
-
-        {/* 4. 성도 */}
-        <button
-          onClick={() => {
-            setStarMapFilter(activeNote?.category_id ? { type: 'category', value: activeNote.category_id } : null)
-            setTab('starmap')
-          }}
-          className="px-3 py-2.5"
-          style={{
-            fontSize: '12px',
-            color: activeTab === 'starmap' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'starmap' ? '2px solid var(--accent-line)' : '2px solid transparent',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          성도
-        </button>
-
-        <div style={{ width: '1px', height: '14px', background: 'var(--border)', margin: '0 8px' }} />
-        
-        {/* 5. 삭제 */}
-        <button
-          onClick={handleDelete}
-          style={{
-            fontSize: '11px',
-            color: 'var(--text-secondary)',
-            padding: '2px 8px',
-            borderRadius: '3px',
-            border: '1px solid var(--border)',
-            whiteSpace: 'nowrap',
-          }}
-          onMouseEnter={e => {
-            ;(e.currentTarget as HTMLButtonElement).style.color = '#C92A2A'
-            ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#C92A2A'
-          }}
-          onMouseLeave={e => {
-            ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)'
-            ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'
-          }}
-        >
-          삭제
-        </button>
+      {/* 노트 동작 */}
+      <div className="flex items-center gap-2">
+        <button className="sn-btn" onClick={handlePrint}>인쇄</button>
+        <button className="sn-btn is-danger" onClick={handleDelete}>삭제</button>
       </div>
     </div>
   )

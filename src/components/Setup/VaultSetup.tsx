@@ -76,7 +76,7 @@ export function VaultSetup({ onDone }: { onDone: () => void }) {
       {/* 기본 경로 사용 */}
       {defaultVault && (
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px', opacity: 0.7 }}>
+          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', opacity: 0.7 }}>
             기본 경로: <code style={{ background: 'var(--bg-input)', padding: '1px 6px', borderRadius: '3px' }}>{defaultVault}</code>
           </p>
           <button
@@ -171,7 +171,7 @@ export function VaultSetup({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-      <p style={{ fontSize: '10px', color: 'var(--text-secondary)', opacity: 0.4, marginTop: '4px' }}>
+      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.4, marginTop: '4px' }}>
         선택한 폴더에 .md 파일로 저장됩니다 — Obsidian 호환
       </p>
     </div>

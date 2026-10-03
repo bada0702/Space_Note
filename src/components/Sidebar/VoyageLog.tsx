@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { Note } from '../../types'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
-import { CategoryItem, NOTE_DRAG_MIME } from './CategoryItem'
+import { CategoryItem, NoteItem, NOTE_DRAG_MIME } from './CategoryItem'
 
 const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#0C8599']
 
@@ -15,6 +16,10 @@ export function VoyageLog() {
   const [uncatDragOver, setUncatDragOver] = useState(false)
   const [blackholeOpen, setBlackholeOpen] = useState(false)
   const [lastClicks, setLastClicks] = useState<Record<string, number>>({})
+  // 다중 선택: Shift 클릭 = 같은 목록 안에서 범위, Ctrl/⌘ 클릭 = 개별 토글, Delete 키 = 선택 삭제
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const anchorRef = useRef<string | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchCategories().catch(console.error)
@@ -60,6 +65,64 @@ export function VoyageLog() {
     setLastClicks(prev => ({ ...prev, [id]: now }))
   }
 
+  const handleSelectClick = (id: string, e: React.MouseEvent, group: Note[]) => {
+    // Safari는 버튼 클릭 시 포커스를 주지 않으므로 Delete 키를 받도록 목록에 포커스
+    if (!listRef.current?.contains(document.activeElement)) listRef.current?.focus()
+    const anchor = anchorRef.current
+    if (e.shiftKey && anchor) {
+      const ids = group.map(n => n.id)
+      const a = ids.indexOf(anchor)
+      const b = ids.indexOf(id)
+      if (a >= 0 && b >= 0) {
+        const [from, to] = a < b ? [a, b] : [b, a]
+        setSelectedIds(new Set(ids.slice(from, to + 1)))
+        return
+      }
+    }
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      anchorRef.current = id
+      return
+    }
+    anchorRef.current = id
+    setSelectedIds(new Set([id]))
+    handleSelectNote(id)
+  }
+
+  const handleListKeyDown = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setSelectedIds(new Set())
+      return
+    }
+    if (e.key !== 'Delete' || selectedIds.size === 0) return
+    // 입력창(새 은하 이름 등)에서 누른 Delete는 글자 지우기
+    if ((e.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return
+    e.preventDefault()
+    const targets = notes.filter(n => selectedIds.has(n.id))
+    if (targets.length === 0) return
+    const msg = targets.length === 1
+      ? `"${targets[0].title}" 노트를 삭제할까요?`
+      : `선택한 노트 ${targets.length}개를 삭제할까요?\n${targets.slice(0, 5).map(n => `· ${n.title}`).join('\n')}${targets.length > 5 ? `\n… 외 ${targets.length - 5}개` : ''}`
+    if (!confirm(msg)) return
+    const failed: string[] = []
+    for (const n of targets) {
+      try {
+        await deleteNote(n.id)
+      } catch (err) {
+        console.error('note delete failed:', err)
+        failed.push(n.title)
+      }
+    }
+    setSelectedIds(new Set())
+    anchorRef.current = null
+    if (failed.length) alert(`삭제하지 못한 노트: ${failed.join(', ')}`)
+  }
+
   const handleUncatDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setUncatDragOver(false)
@@ -71,108 +134,90 @@ export function VoyageLog() {
   const uncategorized = notes.filter(n => !n.category_id)
   const favorites = notes.filter(n => n.is_favorite)
 
+  const noteRow = (note: typeof notes[number], opts: { draggable?: boolean } = {}) => (
+    <button
+      key={note.id}
+      draggable={opts.draggable}
+      onDragStart={opts.draggable ? e => e.dataTransfer.setData(NOTE_DRAG_MIME, note.id) : undefined}
+      className="sn-row"
+      aria-current={activeNote?.id === note.id ? 'true' : undefined}
+      style={{ cursor: opts.draggable ? 'grab' : 'pointer' }}
+      onClick={() => handleNoteClick(note.id)}
+    >
+      <span className="sn-row-text">{note.title}</span>
+    </button>
+  )
+
   if (loading && categories.length === 0) {
     return (
-      <div className="flex-1 px-3 py-4 space-y-2">
-        {[1, 2].map(i => (
-          <div key={i} style={{ height: '24px', borderRadius: '3px', background: 'var(--bg-input)', opacity: 0.5 }} />
+      <div className="flex-1 px-4 py-4 space-y-2">
+        {[1, 2, 3].map(i => (
+          <div key={i} style={{ height: '22px', borderRadius: '4px', background: 'var(--bg-input)', opacity: 0.6 }} />
         ))}
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-y-auto py-2">
-      <div className="px-3 py-1 flex items-center justify-between">
-        <span style={{ fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-          항해일지
-        </span>
+    <div
+      ref={listRef}
+      tabIndex={-1}
+      onKeyDown={handleListKeyDown}
+      className="flex-1 overflow-y-auto"
+      style={{ padding: '10px 0', outline: 'none' }}
+    >
+      <div className="sn-label" style={{ paddingRight: '10px' }}>
+        <span style={{ flex: 1 }}>항해일지</span>
         <button
-          className="text-xs px-1.5 py-0.5"
-          style={{ color: 'var(--text-secondary)', background: 'var(--bg-input)', borderRadius: '3px', fontSize: '11px' }}
+          className="sn-icon-btn"
+          style={{ width: 'auto', padding: '0 6px', fontWeight: 500 }}
           onClick={() => { setShowNewCat(s => !s); setCatError('') }}
+          title="새 은하(카테고리) 만들기"
         >
           + 은하
         </button>
       </div>
 
-      {favorites.length > 0 && (
-        <div className="mb-1 pb-1" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-          <div className="px-3 py-1" style={{
-            fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase',
-            color: '#E8B23A', opacity: 0.85,
-          }}>
-            ⚓ 기항지
-          </div>
-          {favorites.map(note => (
-            <button
-              key={note.id}
-              className="w-full text-left truncate"
-              style={{
-                fontSize: '13px',
-                color: activeNote?.id === note.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                borderLeft: activeNote?.id === note.id ? '2px solid #E8B23A' : '2px solid transparent',
-                paddingLeft: activeNote?.id === note.id ? '14px' : '16px',
-                paddingRight: '12px', paddingTop: '3px', paddingBottom: '3px',
-                display: 'block', cursor: 'pointer',
-              }}
-              onClick={() => handleNoteClick(note.id)}
-            >
-              {note.title}
-            </button>
-          ))}
-        </div>
-      )}
-
       {showNewCat && (
-        <div className="px-3 py-1">
+        <div style={{ padding: '4px 10px 8px 16px' }}>
           <div className="flex gap-1">
             <input
               autoFocus
+              className="sn-input"
               value={newCatName}
               onChange={e => setNewCatName(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') handleAddCategory()
                 if (e.key === 'Escape') { setShowNewCat(false); setCatError('') }
               }}
-              placeholder="카테고리명"
-              style={{
-                flex: 1,
-                fontSize: '12px',
-                padding: '3px 8px',
-                borderRadius: '3px',
-                background: 'var(--bg-input)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border)',
-                outline: 'none',
-              }}
+              placeholder="은하 이름"
+              style={{ flex: 1, minWidth: 0 }}
             />
-            <button
-              onClick={handleAddCategory}
-              style={{ fontSize: '11px', color: 'var(--text-secondary)', padding: '0 6px' }}
-            >
-              추가
-            </button>
+            <button className="sn-btn" onClick={handleAddCategory}>만들기</button>
           </div>
           {catError && (
-            <p style={{ fontSize: '10px', color: '#C92A2A', marginTop: '2px' }}>{catError}</p>
+            <p role="alert" style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger)', marginTop: '4px' }}>{catError}</p>
           )}
         </div>
       )}
 
+      {favorites.length > 0 && (
+        <div style={{ marginBottom: '10px' }}>
+          <div className="sn-label" style={{ color: 'var(--star)' }}>
+            <span aria-hidden="true">★</span> 기항지 <span className="sn-count">{favorites.length}</span>
+          </div>
+          {favorites.map(note => noteRow(note))}
+        </div>
+      )}
+
       {categories.length === 0 && !showNewCat && (
-        <div className="flex flex-col items-center justify-center py-8 gap-3" style={{ color: 'var(--text-secondary)' }}>
-          <svg width="32" height="32" viewBox="0 0 48 48" fill="none" style={{ opacity: 0.2 }}>
+        <div className="flex flex-col items-center justify-center py-8 gap-3" style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+          <svg width="36" height="36" viewBox="0 0 48 48" fill="none" style={{ opacity: 0.35 }} aria-hidden="true">
             <ellipse cx="24" cy="24" rx="22" ry="10" stroke="currentColor" strokeWidth="1.5" />
-            <circle cx="24" cy="24" r="3" fill="currentColor" />
+            <circle cx="24" cy="24" r="3" fill="var(--star)" />
           </svg>
-          <p style={{ fontSize: '12px', opacity: 0.6 }}>항해를 시작하세요</p>
-          <button
-            onClick={() => setShowNewCat(true)}
-            style={{ fontSize: '11px', padding: '4px 12px', background: 'var(--bg-input)', borderRadius: '3px', color: 'var(--text-secondary)' }}
-          >
-            + 새 은하
-          </button>
+          <p style={{ fontSize: 'var(--fs-sm)', padding: '0 20px' }}>은하를 만들어 노트를 분류하세요</p>
+          <button className="sn-btn" onClick={() => setShowNewCat(true)}>+ 새 은하</button>
         </div>
       )}
 
@@ -181,7 +226,8 @@ export function VoyageLog() {
           key={cat.id}
           category={cat}
           notes={notesByCategory(cat.id)}
-          onSelectNote={handleSelectNote}
+          selectedIds={selectedIds}
+          onSelectClick={handleSelectClick}
           onDoubleClickNote={handleDoubleClickNote}
           onCreateNote={handleCreateNote}
           onDropNote={noteId => moveNote(noteId, cat.id)}
@@ -190,13 +236,12 @@ export function VoyageLog() {
       ))}
 
       {uncategorized.length > 0 && (
-        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+        <div style={{ marginTop: '10px' }}>
           <div
-            className="px-3 py-1"
+            className="sn-label"
             style={{
-              fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-secondary)',
-              background: uncatDragOver ? 'var(--bg-input)' : undefined,
-              outline: uncatDragOver ? '1px dashed var(--accent-line)' : undefined,
+              background: uncatDragOver ? 'var(--star-soft)' : undefined,
+              outline: uncatDragOver ? '1px dashed var(--star)' : undefined,
             }}
             onDragOver={e => {
               if (!e.dataTransfer.types.includes(NOTE_DRAG_MIME)) return
@@ -206,75 +251,58 @@ export function VoyageLog() {
             onDragLeave={() => setUncatDragOver(false)}
             onDrop={handleUncatDrop}
           >
-            미분류
+            미분류 <span className="sn-count">{uncategorized.length}</span>
           </div>
-          {uncategorized.map(note => (
-            <button
-              key={note.id}
-              draggable
-              onDragStart={e => e.dataTransfer.setData(NOTE_DRAG_MIME, note.id)}
-              className="w-full text-left truncate"
-              style={{
-                fontSize: '13px',
-                color: activeNote?.id === note.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                borderLeft: activeNote?.id === note.id ? '2px solid var(--accent-line)' : '2px solid transparent',
-                paddingLeft: activeNote?.id === note.id ? '14px' : '16px',
-                paddingRight: '12px',
-                paddingTop: '3px',
-                paddingBottom: '3px',
-                display: 'block',
-                cursor: 'grab',
-              }}
-              onClick={() => handleNoteClick(note.id)}
-            >
-              {note.title}
-            </button>
-          ))}
+          <ul>
+            {uncategorized.map(note => (
+              <NoteItem
+                key={note.id}
+                note={note}
+                indent={16}
+                isActive={activeNote?.id === note.id}
+                isSelected={selectedIds.has(note.id)}
+                onSelect={e => handleSelectClick(note.id, e, uncategorized)}
+                onDoubleClick={() => handleDoubleClickNote(note.id)}
+              />
+            ))}
+          </ul>
         </div>
       )}
 
       {archivedCount > 0 && (
-        <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+        <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '1px solid var(--border)' }}>
           <button
-            className="w-full text-left px-3 py-1 flex items-center gap-1.5"
-            style={{
-              fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase',
-              color: 'var(--text-secondary)', opacity: 0.7,
-            }}
+            className="sn-label"
+            style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }}
+            aria-expanded={blackholeOpen}
             onClick={() => {
               setBlackholeOpen(o => !o)
               if (!blackholeOpen) fetchArchived().catch(console.error)
             }}
           >
-            <span>🕳 블랙홀 ({archivedCount})</span>
-            <span className="ml-auto" style={{ fontSize: '9px' }}>{blackholeOpen ? '▾' : '▸'}</span>
+            <span aria-hidden="true">◐</span> 블랙홀 <span className="sn-count">{archivedCount}</span>
+            <span className="ml-auto" aria-hidden="true">{blackholeOpen ? '▾' : '▸'}</span>
           </button>
           {blackholeOpen && archivedNotes.map(note => (
-            <div key={note.id} className="flex items-center" style={{ paddingRight: '8px' }}>
-              <span
-                className="flex-1 truncate"
-                style={{
-                  fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6,
-                  paddingLeft: '16px', paddingTop: '3px', paddingBottom: '3px',
-                }}
-              >
-                {note.title}
-              </span>
+            <div key={note.id} className="sn-row" style={{ cursor: 'default', paddingRight: '8px' }}>
+              <span className="sn-row-text" style={{ color: 'var(--text-tertiary)' }}>{note.title}</span>
               <button
+                className="sn-icon-btn"
                 title="복원"
+                aria-label={`"${note.title}" 복원`}
                 onClick={() => restoreNote(note.id)}
-                style={{ fontSize: '10px', color: 'var(--text-secondary)', padding: '0 4px' }}
               >
                 ↺
               </button>
               <button
+                className="sn-icon-btn is-danger"
                 title="영구 삭제"
+                aria-label={`"${note.title}" 영구 삭제`}
                 onClick={() => {
                   if (confirm(`"${note.title}" 노트를 영구 삭제할까요? (.md 파일도 삭제됩니다)`)) {
                     deleteNote(note.id).then(() => fetchArchived()).catch(console.error)
                   }
                 }}
-                style={{ fontSize: '10px', color: '#C92A2A', padding: '0 4px' }}
               >
                 ✕
               </button>
