@@ -92,6 +92,18 @@ export interface AISettings {
   vault_dir?: string
 }
 
+/** 외부 에이전트(aibot 등)용 MCP 서버 설정 */
+export interface McpConfig {
+  enabled: boolean
+  allow_write: boolean
+  token: string
+  url: string
+  tools: string[]
+  client_config: { mcpServers: Record<string, { url: string; headers: Record<string, string> }> } | null
+  aibot_config: string
+  aibot_registered: boolean
+}
+
 export interface SearchResult {
   id: string
   title: string

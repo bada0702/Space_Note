@@ -508,3 +508,12 @@ button.sn-atlas-item:hover { background: var(--bg-hover); color: var(--text-prim
 .sn-graph-error { margin-top: 6px; font-size: var(--fs-xs); color: var(--danger); }
 .sn-graph-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .sn-graph-actions .sn-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 설정 — MCP 서버 */
+.sn-mcp-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: var(--fs-sm); color: var(--text-secondary); cursor: pointer; }
+.sn-mcp-field { margin-top: 10px; }
+.sn-mcp-field > span { display: block; margin-bottom: 4px; font-size: var(--fs-xs); color: var(--text-tertiary); }
+.sn-mcp-row { display: flex; gap: 6px; }
+.sn-mcp-row input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border-radius: 5px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); font-size: 12px; font-family: var(--font-mono); outline: none; }
+.sn-mcp-snippet { margin: 0; padding: 8px 10px; max-height: 140px; overflow: auto; background: var(--bg-input); border-radius: 6px; font-size: 11px; font-family: var(--font-mono); color: var(--text-primary); white-space: pre; }
+.sn-mcp-ok { color: #2f9e44; }

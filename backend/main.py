@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from db import init_db
 from auth import require_auth
-from routers import attachments, categories, notes, ai, search, routes, graph, conversations
+from routers import attachments, categories, notes, ai, search, routes, graph, conversations, mcp
 
 app = FastAPI(title="SpaceNote Backend")
 
@@ -47,3 +47,5 @@ app.include_router(graph.router, dependencies=[Depends(require_auth)])
 app.include_router(conversations.router, dependencies=[Depends(require_auth)])
 app.include_router(attachments.router, dependencies=[Depends(require_auth)])
 app.include_router(attachments.public_router)
+app.include_router(mcp.router, dependencies=[Depends(require_auth)])
+app.include_router(mcp.public_router)

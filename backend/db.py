@@ -148,6 +148,18 @@ def init_db() -> None:
             conn.execute("ALTER TABLE settings ADD COLUMN autology_path TEXT NOT NULL DEFAULT 'http://127.0.0.1:8000'")
         if "vault_dir" not in settings_cols:
             conn.execute("ALTER TABLE settings ADD COLUMN vault_dir TEXT NOT NULL DEFAULT ''")
+        # MCP 서버(외부 에이전트 연동) 설정 — 기본은 꺼짐, 쓰기 도구도 꺼짐
+        if "mcp_enabled" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN mcp_enabled INTEGER NOT NULL DEFAULT 0")
+        if "mcp_allow_write" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN mcp_allow_write INTEGER NOT NULL DEFAULT 0")
+        if "mcp_token" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN mcp_token TEXT NOT NULL DEFAULT ''")
+        if "mcp_aibot_config" not in settings_cols:
+            conn.execute(
+                "ALTER TABLE settings ADD COLUMN mcp_aibot_config TEXT NOT NULL "
+                "DEFAULT '/root/aibot/data/mcp_servers.json'"
+            )
             
         conn.commit()
     finally:

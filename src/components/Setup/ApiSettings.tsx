@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { GraphSettings } from './GraphSettings'
+import { McpSettings } from './McpSettings'
 import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
@@ -130,6 +131,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
         style={{
           background: 'var(--bg-panel)', border: '1px solid var(--border)',
           borderRadius: 12, padding: '24px 28px', width: 420, maxWidth: '90vw',
+          maxHeight: '90vh', overflowY: 'auto',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -250,6 +252,9 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
 
           <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
           <GraphSettings />
+
+          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+          <McpSettings />
         </div>
 
         <button
