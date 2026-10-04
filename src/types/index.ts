@@ -27,6 +27,7 @@ export type Theme = 'dark' | 'light'
 export type AIModel =
   | 'claude-sonnet-4-6'
   | 'claude-haiku-4-5'
+  | 'gemini-3.1-flash-lite'
   | 'gemini-3.5-flash-lite'
   | 'gemini-3.5-flash'
   | 'gemini-3.6-flash'

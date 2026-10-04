@@ -18,7 +18,7 @@ from services.textnorm import norm_name
 
 logger = logging.getLogger(__name__)
 
-# 채팅(gemini-3.5-flash-lite)과 무료 한도를 나눠 쓰도록 별도 모델 사용
+# 토큰 소모가 적은 경량 모델로 추출
 GRAPH_MODEL = "gemini-3.1-flash-lite"
 MAX_INPUT_CHARS = 40_000
 MAX_CONCEPTS = 15

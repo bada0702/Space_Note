@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AIModel, AIChatMessage, ChatContext, AISettings, ConversationSummary } from '../types'
 import { aiApi } from '../api/aiApi'
+import { DEFAULT_MODEL } from '../constants/models'
 
 // crypto.randomUUID는 보안 컨텍스트(HTTPS/localhost)에서만 존재 → HTTP로 IP/DDNS 접속 시 대체 id
 const newId = () =>
@@ -26,7 +27,6 @@ interface AIState {
   panelOpen: boolean
   showSettings: boolean
 
-  setModel: (m: AIModel) => void
   setContext: (c: Partial<ChatContext>) => void
   setPanelOpen: (v: boolean) => void
   setShowSettings: (v: boolean) => void
@@ -43,14 +43,13 @@ export const useAIStore = create<AIState>((set, get) => ({
   messages: [],
   conversationId: newId(),
   conversations: [],
-  model: 'gemini-3.5-flash-lite',
+  model: DEFAULT_MODEL,
   context: { useRag: true, useWiki: false },
   streaming: false,
   settings: null,
   panelOpen: false,
   showSettings: false,
 
-  setModel: (model) => set({ model }),
   setContext: (c) => set(s => ({ context: { ...s.context, ...c } })),
   setPanelOpen: (v) => set({ panelOpen: v }),
   setShowSettings: (v) => set({ showSettings: v }),
@@ -77,7 +76,6 @@ export const useAIStore = create<AIState>((set, get) => ({
         id: newId(), role: m.role, content: m.content,
         sources: m.sources, error: m.error ?? undefined,
       })),
-      ...(conv.model ? { model: conv.model as AIModel } : {}),
     })
   },
 

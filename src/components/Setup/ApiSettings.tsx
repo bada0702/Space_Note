@@ -4,6 +4,7 @@ import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
 import type { AISettings } from '../../types'
+import { DEFAULT_MODEL, MODEL_OPTIONS } from '../../constants/models'
 
 // 웹모드(브라우저)에는 Tauri 런타임 브리지가 없어 폴더 선택 대화상자를 띄울 수 없다.
 // 이 체크 없이 열기를 시도하면 window.__TAURI_INTERNALS__가 없어 조용히 실패해
@@ -22,11 +23,7 @@ async function pickFolderViaTauri(): Promise<string | null> {
   }
 }
 
-const MODEL_OPTIONS = [
-  { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
-  { value: 'gemini-3.5-flash',    label: 'Gemini 3.5 Flash' },
-  { value: 'gemini-3.8-flash',    label: 'Gemini 3.8 Flash' },
-]
+const MODEL_GROUPS = [...new Set(MODEL_OPTIONS.map(m => m.group))]
 
 export function ApiSettings({ onClose }: { onClose: () => void }) {
   const { loadSettings, saveSettings } = useAIStore()
@@ -224,15 +221,19 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
           ))}
 
           <div>
-            <label htmlFor="default_model" style={labelStyle}>기본 모델</label>
+            <label htmlFor="default_model" style={labelStyle}>채팅 모델</label>
             <select
               id="default_model"
-              value={form.default_model ?? 'gemini-3.5-flash-lite'}
+              value={form.default_model ?? DEFAULT_MODEL}
               onChange={e => setField('default_model', e.target.value)}
               style={{ ...inputStyle, cursor: 'pointer' }}
             >
-              {MODEL_OPTIONS.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
+              {MODEL_GROUPS.map(g => (
+                <optgroup key={g} label={g}>
+                  {MODEL_OPTIONS.filter(m => m.group === g).map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </optgroup>
               ))}
               {ollamaModels.length > 0 && (
                 <optgroup label="Ollama Models (로컬)">

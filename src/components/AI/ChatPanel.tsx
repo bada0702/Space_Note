@@ -1,33 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
-import { aiApi } from '../../api/aiApi'
 import { ChatMessage } from './ChatMessage'
 import { ConversationList } from './ConversationList'
-import type { AIModel } from '../../types'
-
-const MODEL_LABELS: Record<string, string> = {
-  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash-Lite',
-  'gemini-3.5-flash':    'Gemini 3.5 Flash',
-  'gemini-3.8-flash':    'Gemini 3.8 Flash',
-}
 
 export function ChatPanel() {
   const {
-    messages, model, context, streaming,
-    sendMessage, setModel, setContext, clearMessages, loadSettings,
+    messages, context, streaming,
+    sendMessage, setContext, clearMessages, loadSettings,
   } = useAIStore()
   const { activeNote } = useNotesStore()
   const [input, setInput] = useState('')
-  const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { loadSettings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    aiApi.getOllamaModels()
-      .then(setOllamaModels)
-      .catch(e => console.error('Ollama 모델 목록 조회 실패:', e))
-  }, [])
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -54,25 +40,6 @@ export function ChatPanel() {
         <span style={{ fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
           AI 채팅
         </span>
-        <select
-          value={model}
-          onChange={e => setModel(e.target.value as AIModel)}
-          style={{
-            fontSize: 12, background: 'var(--bg-input)', color: 'var(--text-secondary)',
-            border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px', cursor: 'pointer',
-          }}
-        >
-          {(Object.keys(MODEL_LABELS) as AIModel[]).map(m => (
-            <option key={m} value={m}>{MODEL_LABELS[m]}</option>
-          ))}
-          {ollamaModels.length > 0 && (
-            <optgroup label="Ollama (로컬)">
-              {ollamaModels.map(m => (
-                <option key={m.name} value={m.name}>{m.name}</option>
-              ))}
-            </optgroup>
-          )}
-        </select>
         <button
           onClick={clearMessages}
           style={{
