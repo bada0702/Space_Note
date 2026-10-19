@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNotesStore } from '../../store/notesStore'
 import { formatDateTime } from '../../utils/dateFormat'
+import { notesApi } from '../../api/notesApi'
+import { searchApi } from '../../api/searchApi'
 import type { EditorTab } from '../../types'
 
 export function EditorTabs() {
   const { activeNote, activeTab, setTab, setStarMapFilter, deleteNote, renameNote, toggleFavorite } = useNotesStore()
   const [titleValue, setTitleValue] = useState('')
   const titleRef = useRef<HTMLInputElement>(null)
+  const [routeBusy, setRouteBusy] = useState(false)
+  const [routeNotice, setRouteNotice] = useState('')
 
   // activeNote가 바뀌면 제목 동기화
   useEffect(() => {
@@ -17,9 +21,38 @@ export function EditorTabs() {
         setTimeout(() => titleRef.current?.select(), 50)
       }
     }
+    setRouteNotice('')
   }, [activeNote?.id])
 
   if (!activeNote) return null
+
+  // 파이썬 엔진으로 이 노트의 키워드·태그를 다시 뽑는다 — 공유 키워드가 생기면 성도 항로가 자동으로 이어진다
+  const handleRouteAnalyze = async () => {
+    const id = activeNote.id
+    setRouteBusy(true)
+    setRouteNotice('항로 분석 중...')
+    try {
+      await notesApi.analyzeOnePython(id)
+      let status = 'pending'
+      for (let i = 0; i < 30 && status === 'pending'; i++) {
+        await new Promise(r => setTimeout(r, 1000))
+        status = (await notesApi.get(id)).analysis_status
+      }
+      if (useNotesStore.getState().activeNote?.id !== id) return
+      if (status === 'pending') setRouteNotice('분석이 아직 진행 중입니다')
+      else if (status === 'failed') setRouteNotice('항로 분석 실패')
+      else {
+        // 성도와 같은 기준(노트당 상한 적용)으로 이 노트에 이어진 항로 수를 센다
+        const routes = await searchApi.discoveryRoutes()
+        const linked = routes.filter(r => r.note_a === id || r.note_b === id).length
+        setRouteNotice(linked ? `항로 ${linked}개 연결됨` : '연결할 노트를 찾지 못했습니다')
+      }
+    } catch {
+      setRouteNotice('항로 분석 요청 실패')
+    } finally {
+      setRouteBusy(false)
+    }
+  }
 
   const handleTitleBlur = () => {
     if (activeNote && titleValue.trim() && titleValue !== activeNote.title) {
@@ -150,6 +183,18 @@ export function EditorTabs() {
 
       {/* 노트 동작 */}
       <div className="flex items-center gap-2">
+        {routeNotice && (
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tertiary)' }}>{routeNotice}</span>
+        )}
+        <button
+          className="sn-btn"
+          onClick={handleRouteAnalyze}
+          disabled={routeBusy}
+          title="이 노트의 키워드·태그를 분석해 같은 키워드를 가진 노트와 항로로 연결합니다"
+          style={{ cursor: routeBusy ? 'wait' : undefined, opacity: routeBusy ? 0.6 : 1 }}
+        >
+          ⟡ 항로 분석
+        </button>
         <button className="sn-btn" onClick={handlePrint}>인쇄</button>
         <button className="sn-btn is-danger" onClick={handleDelete}>삭제</button>
       </div>
