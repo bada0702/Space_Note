@@ -23,7 +23,7 @@ SpaceNote는 Markdown 기반 노트 작성을 핵심으로 하되, AI가 노트 
 - [프로젝트 구조](#프로젝트-구조)
 - [백엔드 API 개요](#백엔드-api-개요)
 - [테스트](#테스트)
-- [데스크톱 앱 빌드 (Tauri)](#데스크톱-앱-빌드-tauri)
+- [Windows 설치판 (setup.exe)](#windows-설치판-setupexe)
 - [문제 해결](#문제-해결)
 
 ---
@@ -251,19 +251,51 @@ pytest
 
 ---
 
-## 데스크톱 앱 빌드 (Tauri)
+## Windows 설치판 (setup.exe)
 
-Rust 및 Tauri 사전 요구사항이 설치되어 있어야 합니다.
+Tauri 셸이 PyInstaller로 묶은 백엔드를 `127.0.0.1:18001`에 띄우는 데스크톱 앱입니다.
+인증 토큰은 실행할 때마다 새로 만들어지며, API 키는 앱의 설정 화면에서 입력합니다.
 
-```bash
-# 개발 모드로 실행
-npm run tauri dev
+### 빌드 (Windows PC)
 
-# 배포용 바이너리 빌드
-npm run tauri build
+사전 설치(1회): Python 3.12, Node 20, Rust([rustup](https://rustup.rs/)), Visual Studio 2022 Build Tools(C++ 워크로드)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 ```
 
-빌드 산출물은 `src-tauri/target/release` 하위에 생성됩니다.
+산출물: `src-tauri\target\release\bundle\nsis\SpaceNote_<버전>_x64-setup.exe`
+
+- 빌드 PC의 `.env.local` 토큰은 번들에 들어가지 않습니다(스크립트가 비움).
+- 아이콘을 바꾸려면 `src-tauri/icons/source.svg`(또는 1024×1024 PNG)를 교체하고 `npx tauri icon <파일> -o src-tauri/icons`를 실행하세요.
+
+### 설치·데이터 위치
+
+| 항목 | 위치 |
+|---|---|
+| 프로그램 | 사용자별 설치 (관리자 권한 불필요) |
+| DB | `%APPDATA%\SpaceNote\spacenote.db` |
+| 기본 vault | `%USERPROFILE%\Documents\SpaceNote` (첫 실행 화면에서 변경 가능) |
+| 백엔드 로그 | `%APPDATA%\SpaceNote\backend.log` |
+
+앱을 제거해도 DB와 vault는 남습니다.
+
+### 알려진 제약
+
+- **SmartScreen 경고**: 코드 서명을 하지 않아 첫 실행 시 "Windows의 PC 보호" 창이 뜹니다. **추가 정보 → 실행**을 누르세요.
+- **WebView2**: Windows 10/11에는 기본 포함입니다. 없으면 설치 중 인터넷으로 내려받으므로 폐쇄망 PC에서는 별도 설치가 필요합니다.
+- **포트 18001**을 다른 프로그램이 쓰고 있으면 실행되지 않습니다(오류 창 표시).
+- 웹 버전에서 만든 vault를 열면 첨부 이미지(`/api/attachments/...` 링크)가 표시되지 않습니다.
+
+### 설치판 검증 체크리스트
+
+- [ ] setup.exe 설치 (관리자 권한 없이)
+- [ ] 실행 → 화면 표시, 노트 생성·저장
+- [ ] API 키 입력 → AI 채팅 응답
+- [ ] vault 폴더 변경 (네이티브 다이얼로그)
+- [ ] 창 종료 후 작업 관리자에 `spacenote-backend.exe`가 남지 않음
+- [ ] 제거 후 `%APPDATA%\SpaceNote`, vault 데이터 유지
+- [ ] 설치 파일 크기 기록
 
 ---
 
