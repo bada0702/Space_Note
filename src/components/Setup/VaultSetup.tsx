@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
+import { apiBase } from '../../api/client'
 
 async function fetchDefaultVault(): Promise<string> {
   try {
-    const res = await fetch('/api/health')
+    const res = await fetch(`${apiBase()}/health`)
     const data = await res.json()
     return data.default_vault ?? ''
   } catch {

@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { BackendGate } from './components/Setup/BackendGate'
 import './styles/globals.css'
 
 // 로컬 폰트 번들
@@ -14,6 +15,8 @@ import '@fontsource/jetbrains-mono/500.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <BackendGate>
+      <App />
+    </BackendGate>
   </React.StrictMode>
 )

@@ -1,4 +1,4 @@
-import { API_BASE, authHeaders } from './client'
+import { apiBase, authHeaders } from './client'
 
 export interface UploadedAttachment {
   name: string
@@ -15,7 +15,7 @@ export function isImageFile(name: string): boolean {
 /** 파일을 raw body로 업로드하고 마크다운용 URL을 돌려준다. */
 export async function uploadAttachment(file: File): Promise<UploadedAttachment> {
   const res = await fetch(
-    `${API_BASE}/attachments?filename=${encodeURIComponent(file.name)}`,
+    `${apiBase()}/attachments?filename=${encodeURIComponent(file.name)}`,
     {
       method: 'POST',
       headers: authHeaders({ 'Content-Type': 'application/octet-stream' }),
@@ -27,7 +27,7 @@ export async function uploadAttachment(file: File): Promise<UploadedAttachment> 
     throw new Error(`API ${res.status}: ${err}`)
   }
   const body = (await res.json()) as { name: string; url: string }
-  return { name: body.name, url: `${API_BASE}${body.url}` }
+  return { name: body.name, url: `${apiBase()}${body.url}` }
 }
 
 /** 업로드 결과를 마크다운 조각으로 변환 (이미지는 ! 문법). */

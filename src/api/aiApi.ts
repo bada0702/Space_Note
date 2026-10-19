@@ -1,7 +1,7 @@
 import type {
   AIModel, AIChatMessage, AISettings, ChatSource, GraphStatus, ConversationSummary, ConversationDetail,
 } from '../types'
-import { API_BASE, authHeaders, apiFetch } from './client'
+import { apiBase, authHeaders, apiFetch } from './client'
 
 export const aiApi = {
   getSettings: (): Promise<AISettings> =>
@@ -38,7 +38,7 @@ export const aiApi = {
     useRag: boolean
     useWiki: boolean
   }): AsyncGenerator<{ text?: string; error?: string; sources?: ChatSource[] }> {
-    const resp = await fetch(`${API_BASE}/ai/chat`, {
+    const resp = await fetch(`${apiBase()}/ai/chat`, {
       method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify({
