@@ -1,4 +1,4 @@
-# SpaceNote Windows 설치 파일(setup.exe) 빌드 스크립트
+﻿# SpaceNote Windows 설치 파일(setup.exe) 빌드 스크립트
 #
 # 목적  : 백엔드를 PyInstaller로 묶고 Tauri NSIS 설치 파일을 만든다.
 # 사용법: 저장소 루트에서
@@ -48,11 +48,22 @@ if (-not (Test-Path (Join-Path $Bundle 'spacenote-backend.exe'))) { throw "백�
 $Leak = Get-ChildItem $Bundle -Recurse -Force -Include '.env', 'spacenote.db'
 if ($Leak) { throw "번들에 포함되면 안 되는 파일: $($Leak.FullName -join ', ')" }
 
-# 5. 프론트 + Tauri 설치 파일 (beforeBuildCommand가 npm run build 수행)
-# .env.local의 서버용 토큰이 설치판 번들에 박히지 않게 비운다 (Tauri 모드는 실행 시 토큰을 받음)
-$env:VITE_SPACENOTE_TOKEN = ''
+# 5. 프론트 + Tauri 설치 파일
+#    beforeBuildCommand가 `vite build --mode desktop`으로 빌드 → .env.desktop이 .env.local의 서버 토큰을 비운다
 Invoke-Step 'npm ci' { npm ci }
 Invoke-Step 'tauri build' { npx tauri build }
+
+# 서버 토큰이 번들(dist)에 남았는지 재확인 — 남았으면 설치 파일을 배포하면 안 된다
+$EnvLocal = Join-Path $Root '.env.local'
+if (Test-Path $EnvLocal) {
+    $Line = Select-String -Path $EnvLocal -Pattern '^VITE_SPACENOTE_TOKEN=(.+)$' | Select-Object -First 1
+    if ($Line) {
+        $Token = $Line.Matches[0].Groups[1].Value.Trim()
+        if (Select-String -Path (Join-Path $Root 'dist\assets\*') -SimpleMatch $Token -Quiet) {
+            throw '.env.local의 VITE_SPACENOTE_TOKEN이 dist 번들에 포함됨 — 이 설치 파일은 배포 금지'
+        }
+    }
+}
 
 # 6. 결과
 $Setup = Get-ChildItem (Join-Path $Root 'src-tauri\target\release\bundle\nsis') -Filter '*-setup.exe' |

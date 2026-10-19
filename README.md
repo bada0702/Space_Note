@@ -266,7 +266,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 
 산출물: `src-tauri\target\release\bundle\nsis\SpaceNote_<버전>_x64-setup.exe`
 
-- 빌드 PC의 `.env.local` 토큰은 번들에 들어가지 않습니다(스크립트가 비움).
+- 빌드 PC의 `.env.local` 토큰은 번들에 들어가지 않습니다(`vite build --mode desktop` + `.env.desktop`, 빌드 후 스크립트가 재확인).
+- `build-windows.ps1`은 UTF-8 BOM으로 저장돼 있어야 Windows PowerShell 5.1에서 한글이 깨지지 않습니다.
 - 아이콘을 바꾸려면 `src-tauri/icons/source.svg`(또는 1024×1024 PNG)를 교체하고 `npx tauri icon <파일> -o src-tauri/icons`를 실행하세요.
 
 ### 설치·데이터 위치
