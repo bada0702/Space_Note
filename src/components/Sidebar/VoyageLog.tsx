@@ -3,6 +3,7 @@ import type { Note } from '../../types'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
 import { useAIStore } from '../../store/aiStore'
+import { useSearchStore } from '../../store/searchStore'
 import { CategoryItem, NoteItem, NOTE_DRAG_MIME } from './CategoryItem'
 
 const GALAXY_COLORS = ['#3B5BDB', '#C2255C', '#2F9E44', '#E67700', '#7048E8', '#0C8599']
@@ -12,6 +13,7 @@ export function VoyageLog() {
   const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote,
     archivedNotes, archivedCount, fetchArchived, restoreNote, deleteNote, activeTab, importChatGPT } = useNotesStore()
   const { panelOpen, setPanelOpen } = useAIStore()
+  const { activePanel, setPanel } = useSearchStore()
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
   const [catError, setCatError] = useState('')
@@ -74,13 +76,14 @@ export function VoyageLog() {
 
   const handleSelectNote = (id: string) => {
     openNote(id)
-    // 성도/AI 채팅이 화면을 차지하고 있으면 노트를 열어도 보이지 않으므로 편집 화면으로 전환
+    // 성도/AI 채팅/항법·미개척 항로·별자리 패널이 화면을 차지하고 있으면 노트를 열어도 보이지 않으므로 편집 화면으로 전환
     if (panelOpen) setPanelOpen(false)
+    if (activePanel) setPanel(null)
     if (activeTab === 'starmap') setTab('edit')
   }
 
   const handleDoubleClickNote = (id: string) => {
-    openNote(id)
+    handleSelectNote(id)
     setTab('edit')
   }
 
