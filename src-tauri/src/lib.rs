@@ -42,7 +42,7 @@ fn start_backend(app: &tauri::App) -> Result<Backend, String> {
 
     if !sidecar::port_available(sidecar::PORT) {
         return Err(format!(
-            "포트 {}이 이미 사용 중입니다. SpaceNote가 이미 실행 중인지 확인하세요.",
+            "포트 {}이 이미 사용 중입니다.\nSpaceNote가 이미 실행 중이거나, 작업 관리자에 spacenote-backend.exe가 남아 있는지 확인하세요.",
             sidecar::PORT
         ));
     }

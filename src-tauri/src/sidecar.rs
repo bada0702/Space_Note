@@ -34,7 +34,8 @@ pub fn spawn(exe: &Path, env: &[(String, String)], log: &Path) -> std::io::Resul
     let err = out.try_clone()?;
     let mut cmd = Command::new(exe);
     cmd.envs(env.iter().map(|(k, v)| (k, v)))
-        .stdin(Stdio::null())
+        // 파이프를 Child에 쥐고 있다가 앱이 죽으면 OS가 닫음 → 백엔드가 EOF를 보고 종료 (desktop_entry.watch_parent)
+        .stdin(Stdio::piped())
         .stdout(out)
         .stderr(err);
     #[cfg(windows)]
@@ -81,6 +82,17 @@ mod tests {
         let out = std::fs::read_to_string(&log).unwrap();
         let _ = std::fs::remove_file(&log);
         assert!(out.contains("SPACENOTE_TOKEN=tok123"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_keeps_stdin_pipe_for_parent_watch() {
+        let log = std::env::temp_dir().join(format!("sidecar-stdin-{}.log", std::process::id()));
+        let mut child = spawn(Path::new("/bin/cat"), &[], &log).unwrap();
+        assert!(child.stdin.is_some());
+        drop(child.stdin.take()); // 부모가 파이프를 닫으면 자식(cat)은 EOF로 종료해야 한다
+        assert!(child.wait().unwrap().success());
+        let _ = std::fs::remove_file(&log);
     }
 
     #[test]
