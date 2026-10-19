@@ -24,6 +24,11 @@ fn backend_info(backend: tauri::State<'_, Backend>) -> BackendInfo {
     backend.info.clone()
 }
 
+#[tauri::command]
+fn backend_alive(backend: tauri::State<'_, Backend>) -> bool {
+    backend.child.lock().unwrap().as_mut().is_some_and(sidecar::is_running)
+}
+
 /// 오류 대화상자를 띄우고, 닫으면 앱을 종료한다.
 fn fail(app: &tauri::App, msg: String) {
     let handle = app.handle().clone();
@@ -68,7 +73,7 @@ fn start_backend(app: &tauri::App) -> Result<Backend, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![backend_info])
+        .invoke_handler(tauri::generate_handler![backend_info, backend_alive])
         .setup(|app| {
             match start_backend(app) {
                 Ok(backend) => {

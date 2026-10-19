@@ -47,6 +47,11 @@ pub fn spawn(exe: &Path, env: &[(String, String)], log: &Path) -> std::io::Resul
     cmd.spawn()
 }
 
+/// 백엔드 프로세스가 아직 살아 있는지 (프론트가 기동 대기 중 조기 종료를 감지하는 데 사용)
+pub fn is_running(child: &mut Child) -> bool {
+    matches!(child.try_wait(), Ok(None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +97,18 @@ mod tests {
         assert!(child.stdin.is_some());
         drop(child.stdin.take()); // 부모가 파이프를 닫으면 자식(cat)은 EOF로 종료해야 한다
         assert!(child.wait().unwrap().success());
+        let _ = std::fs::remove_file(&log);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn is_running_tracks_child_exit() {
+        let log = std::env::temp_dir().join(format!("sidecar-run-{}.log", std::process::id()));
+        let mut alive = spawn(Path::new("/bin/cat"), &[], &log).unwrap();
+        assert!(is_running(&mut alive));
+        drop(alive.stdin.take());
+        alive.wait().unwrap();
+        assert!(!is_running(&mut alive));
         let _ = std::fs::remove_file(&log);
     }
 
