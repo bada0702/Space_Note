@@ -296,6 +296,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 - [ ] vault 폴더 변경 (네이티브 다이얼로그)
 - [ ] 창 종료 후 작업 관리자에 `spacenote-backend.exe`가 남지 않음
 - [ ] 제거 후 `%APPDATA%\SpaceNote`, vault 데이터 유지
+- [ ] 한글 사용자명 계정(`C:\Users\홍길동`)에서 실행 → 태그·키워드 추출 동작
+- [ ] 작업 관리자에서 SpaceNote.exe 강제 종료 → `spacenote-backend.exe`도 몇 초 내 종료, 재실행 정상
 - [ ] 설치 파일 크기 기록
 
 ---
