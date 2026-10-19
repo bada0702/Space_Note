@@ -217,9 +217,9 @@ export function VoyageLog() {
           className="sn-icon-btn"
           style={{ width: 'auto', padding: '0 6px', fontWeight: 500 }}
           onClick={() => { setShowImport(s => !s); setImportError('') }}
-          title="ChatGPT 공유 링크로 노트 가져오기"
+          title="ChatGPT·Gemini 공유 링크로 노트 가져오기"
         >
-          ⤓ GPT
+          ⤓ 가져오기
         </button>
       </div>
 
@@ -235,7 +235,7 @@ export function VoyageLog() {
                 if (e.key === 'Enter') handleImport()
                 if (e.key === 'Escape') { setShowImport(false); setImportError('') }
               }}
-              placeholder="https://chatgpt.com/share/..."
+              placeholder="ChatGPT·Gemini 공유 링크"
               disabled={importing}
               style={{ flex: 1, minWidth: 0 }}
             />

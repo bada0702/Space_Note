@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 
 from db import get_conn
 from models import ChatGPTImport, NoteCreate, NotePatch
-from services import chatgpt_share, vault
+from services import chatgpt_share, gemini_share, vault
 from services import extraction
 from services import graph_extraction
 from services.tagparse import extract_tags
@@ -227,10 +227,14 @@ def _unique_title(title: str) -> str:
 
 @router.post("/notes/import/chatgpt")
 def import_chatgpt(body: ChatGPTImport, bg: BackgroundTasks):
-    """ChatGPT 공유 링크의 대화를 새 노트로 만든다."""
+    """ChatGPT·Gemini 공유 링크의 대화를 새 노트로 만든다."""
     try:
-        url = chatgpt_share.normalize_share_url(body.url)
-        conv = chatgpt_share.parse_share_html(chatgpt_share.fetch_share_html(url))
+        if gemini_share.is_gemini_url(body.url):
+            url = gemini_share.normalize_share_url(body.url)
+            conv = gemini_share.parse_batchexecute(gemini_share.fetch_share_data(url))
+        else:
+            url = chatgpt_share.normalize_share_url(body.url)
+            conv = chatgpt_share.parse_share_html(chatgpt_share.fetch_share_html(url))
     except chatgpt_share.ShareImportError as e:
         raise HTTPException(status_code=400, detail=str(e))
     # 볼트 노트 제목 관례: 공백 대신 밑줄
