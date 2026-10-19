@@ -19,7 +19,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    [],
+    # frozen 앱은 PYTHONUTF8 등 환경변수를 무시하므로 UTF-8 모드를 부트로더 옵션으로 켠다
+    # (Windows 기본 cp949 대신 UTF-8 — 한글·이모지 로그/파일 I/O 깨짐 방지)
+    [('X utf8', None, 'OPTION')],
     exclude_binaries=True,
     name='spacenote-backend',
     # 콘솔 창은 Tauri가 CREATE_NO_WINDOW로 숨기고, stdout은 backend.log로 받는다

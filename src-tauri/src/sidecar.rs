@@ -25,9 +25,7 @@ pub fn backend_env(token: &str, data_dir: &Path, vault_dir: &Path) -> Vec<(Strin
         ("DB_PATH".into(), s(&data_dir.join("spacenote.db"))),
         ("VAULT_DIR".into(), s(vault_dir)),
         ("ALLOWED_ORIGIN".into(), "http://tauri.localhost".into()),
-        // Windows 기본 인코딩(cp949) 대신 UTF-8 — 한글 경로·노트·로그 깨짐 방지
-        ("PYTHONUTF8".into(), "1".into()),
-        ("PYTHONIOENCODING".into(), "utf-8".into()),
+        // UTF-8 모드는 env(PYTHONUTF8)가 frozen 앱에서 무시되므로 spacenote-backend.spec 옵션으로 켠다
     ]
 }
 
@@ -71,8 +69,6 @@ mod tests {
         );
         assert_eq!(get("VAULT_DIR").as_deref(), Some("V"));
         assert_eq!(get("ALLOWED_ORIGIN").as_deref(), Some("http://tauri.localhost"));
-        assert_eq!(get("PYTHONUTF8").as_deref(), Some("1"));
-        assert_eq!(get("PYTHONIOENCODING").as_deref(), Some("utf-8"));
     }
 
     #[cfg(unix)]
