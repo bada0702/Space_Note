@@ -16,3 +16,8 @@ vault/
 .frontend.pid
 .antigravitycli/
 .gstack/
+
+# Windows 설치판 빌드 산출물
+src-tauri/target/
+build/
+backend/.venv-build/
