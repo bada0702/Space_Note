@@ -1,5 +1,5 @@
 """지식 그래프 관리 API — 일괄 분석 시작, 실패 재시도, 진행 상황."""
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from db import get_conn
 from services import graph_worker
@@ -57,3 +57,40 @@ def graph_retry_failed():
         counts = _counts(conn)
     graph_worker.start()
     return counts
+
+
+# ── 별자리: 여러 노트에 걸친 지식 그래프 개념 ──────────────────
+
+CONSTELLATION_MIN_NOTES = 3
+
+
+@router.get("/constellations")
+def constellations(limit: int = 100):
+    """노트 CONSTELLATION_MIN_NOTES개 이상이 공유하는 개념을 노트 수 내림차순으로."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT c.id, c.name, c.type, COUNT(DISTINCT n.id) AS note_count, "
+            "COUNT(DISTINCT n.category_id) AS galaxy_count "
+            "FROM concepts c "
+            "JOIN note_concepts nc ON nc.concept_id = c.id "
+            "JOIN notes n ON n.id = nc.note_id AND n.is_archived = 0 "
+            "GROUP BY c.id HAVING note_count >= ? "
+            "ORDER BY note_count DESC, c.name LIMIT ?",
+            (CONSTELLATION_MIN_NOTES, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.get("/constellations/{cid}/notes")
+def constellation_notes(cid: str):
+    with get_conn() as conn:
+        if not conn.execute("SELECT 1 FROM concepts WHERE id = ?", (cid,)).fetchone():
+            raise HTTPException(status_code=404, detail="constellation not found")
+        rows = conn.execute(
+            "SELECT n.id, n.title, n.category_id, n.modified_at "
+            "FROM note_concepts nc JOIN notes n ON n.id = nc.note_id "
+            "WHERE nc.concept_id = ? AND n.is_archived = 0 "
+            "ORDER BY nc.weight DESC, n.modified_at DESC",
+            (cid,),
+        ).fetchall()
+    return [dict(r) for r in rows]
