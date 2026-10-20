@@ -160,10 +160,29 @@ def init_db() -> None:
                 "ALTER TABLE settings ADD COLUMN mcp_aibot_config TEXT NOT NULL "
                 "DEFAULT '/root/aibot/data/mcp_servers.json'"
             )
-            
+
+        # 마이그레이션(user_version 1): 태그 추출 규칙 강화(코드·색상·숫자 제외)에 맞춰 기존 태그 재계산
+        if conn.execute("PRAGMA user_version").fetchone()[0] < 1:
+            _resync_all_tags(conn)
+            conn.execute("PRAGMA user_version = 1")
+
         conn.commit()
     finally:
         conn.close()
+
+
+def _resync_all_tags(conn: sqlite3.Connection) -> None:
+    import uuid
+    from datetime import datetime, timezone
+    from services.tagparse import extract_tags
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute("DELETE FROM tags")
+    for nid, content in conn.execute("SELECT id, content FROM notes").fetchall():
+        conn.executemany(
+            "INSERT INTO tags (id, note_id, tag, norm, created_at) VALUES (?, ?, ?, ?, ?)",
+            [(str(uuid.uuid4()), nid, t, norm_name(t), now) for t in extract_tags(content)],
+        )
 
 
 @contextmanager

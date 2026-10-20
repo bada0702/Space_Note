@@ -30,6 +30,31 @@ def test_extract_tags_ignores_double_hash():
     assert extract_tags("##더블해시") == []
 
 
+def test_extract_tags_ignores_code_blocks_and_inline_code():
+    text = "#진짜태그\n```c\n#include <stdio.h>\n#define X 1\n```\n그리고 `#inline` 코드"
+    assert extract_tags(text) == ["진짜태그"]
+
+
+def test_extract_tags_ignores_numbers_and_hex_colors():
+    assert extract_tags("1. #1 #2 색상 #007bff #fff #00C853 #FFD600") == []
+
+
+def test_extract_tags_ignores_commented_out_config_and_code():
+    text = (
+        "#password       = secret\n"
+        "#innodb_flush_method=O_DSYNC\n"
+        "#include \"stdio.h\"\n"
+        "#load_dotenv()\n"
+        "#echo Starting Simulator...\n"
+        "#error This file requires C++11\n"
+    )
+    assert extract_tags(text) == []
+
+
+def test_extract_tags_keeps_tag_only_lines_and_inline_tags():
+    assert extract_tags("#아이디어 #project\n오늘은 #AIX 작업") == ["아이디어", "project", "AIX"]
+
+
 def test_extract_tags_empty_content():
     assert extract_tags("") == []
 

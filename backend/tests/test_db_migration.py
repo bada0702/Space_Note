@@ -63,3 +63,38 @@ def test_init_db_migrates_note_flags_and_routes_table(monkeypatch, tmp_path):
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("INSERT INTO routes (id, note_a, note_b, created_at) VALUES ('r2','a','b','now')")
     conn.close()
+
+
+def test_init_db_resyncs_noisy_tags_once(monkeypatch, tmp_path):
+    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "tags.db"))
+    from config import settings
+    settings.reload()
+    from db import init_db
+    init_db()
+
+    # 옛 규칙으로 쌓인 잡음 태그(#1, 색상 코드)를 흉내 낸다
+    conn = sqlite3.connect(settings.DB_PATH)
+    conn.execute(
+        "INSERT INTO notes (id, path, title, content, created_at, modified_at) VALUES (?,?,?,?,?,?)",
+        ("n1", "p", "t", "#1 색상 #007bff 그리고 #아이디어 메모", "now", "now"),
+    )
+    conn.executemany(
+        "INSERT INTO tags (id, note_id, tag, norm, created_at) VALUES (?,?,?,?,?)",
+        [("t1", "n1", "1", "1", "now"), ("t2", "n1", "007bff", "007bff", "now")],
+    )
+    conn.execute("PRAGMA user_version = 0")
+    conn.commit()
+    conn.close()
+
+    init_db()
+    conn = sqlite3.connect(settings.DB_PATH)
+    assert [r[0] for r in conn.execute("SELECT tag FROM tags")] == ["아이디어"]
+    # 두 번째 실행부터는 다시 계산하지 않는다
+    conn.execute("INSERT INTO tags (id, note_id, tag, norm, created_at) VALUES ('t9','n1','수동','수동','now')")
+    conn.commit()
+    conn.close()
+    init_db()
+    conn = sqlite3.connect(settings.DB_PATH)
+    assert sorted(r[0] for r in conn.execute("SELECT tag FROM tags")) == ["수동", "아이디어"]
+    conn.close()
