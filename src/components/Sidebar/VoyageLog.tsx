@@ -12,7 +12,7 @@ export function VoyageLog() {
   const { categories, fetchCategories, addCategory, loading } = useCategoriesStore()
   const { notes, fetchNotes, openNote, createNote, activeNote, setTab, moveNote,
     archivedNotes, archivedCount, fetchArchived, restoreNote, deleteNote, activeTab, importChatGPT } = useNotesStore()
-  const { panelOpen, setPanelOpen } = useAIStore()
+  const { panelOpen, setPanelOpen, showSettings, setShowSettings } = useAIStore()
   const { activePanel, setPanel } = useSearchStore()
   const [newCatName, setNewCatName] = useState('')
   const [showNewCat, setShowNewCat] = useState(false)
@@ -57,6 +57,7 @@ export function VoyageLog() {
     try {
       await importChatGPT(url)
       if (panelOpen) setPanelOpen(false)
+      if (showSettings) setShowSettings(false)
       setImportUrl('')
       setShowImport(false)
     } catch (e) {
@@ -78,6 +79,7 @@ export function VoyageLog() {
     openNote(id)
     // 성도/AI 채팅/항법·미개척 항로·별자리 패널이 화면을 차지하고 있으면 노트를 열어도 보이지 않으므로 편집 화면으로 전환
     if (panelOpen) setPanelOpen(false)
+    if (showSettings) setShowSettings(false)
     if (activePanel) setPanel(null)
     if (activeTab === 'starmap') setTab('edit')
   }

@@ -6,7 +6,7 @@ import { useSearchStore } from '../../store/searchStore'
 
 export function Sidebar() {
   const { setTab, setStarMapFilter, activeTab, starMapFilter, notes, openNote } = useNotesStore()
-  const { panelOpen, setPanelOpen, setShowSettings } = useAIStore()
+  const { panelOpen, setPanelOpen, showSettings, setShowSettings } = useAIStore()
   const { activePanel, setPanel, query, setQuery, doSearch } = useSearchStore()
   const searchRef = useRef<HTMLInputElement>(null)
   const [searchFocused, setSearchFocused] = useState(false)
@@ -29,6 +29,7 @@ export function Sidebar() {
   const closeAll = () => {
     setPanelOpen(false)
     setPanel(null)
+    setShowSettings(false)
   }
 
   const handleStarMap = () => {
@@ -37,14 +38,14 @@ export function Sidebar() {
     setTab('starmap')
   }
 
-  const handleNavPanel = (id: 'discoveries' | 'search' | 'tags') => {
-    const isAlreadyOpen = activePanel === id && !panelOpen
+  const handleNavPanel = (id: 'discoveries' | 'search' | 'constellations') => {
+    const isAlreadyOpen = activePanel === id && !panelOpen && !showSettings
     closeAll()
     if (!isAlreadyOpen) setPanel(id)
   }
 
   const handleAIChat = () => {
-    const isAlreadyOpen = panelOpen
+    const isAlreadyOpen = panelOpen && !showSettings
     closeAll()
     if (!isAlreadyOpen) setPanelOpen(true)
   }
@@ -88,14 +89,14 @@ export function Sidebar() {
   }
 
   // 활성 상태: 다른 패널이 열려 있으면 해당 항목은 비활성
-  const isStarMapActive = activeTab === 'starmap' && starMapFilter === null && !panelOpen && !activePanel
+  const isStarMapActive = activeTab === 'starmap' && starMapFilter === null && !panelOpen && !activePanel && !showSettings
 
   const navItems = [
     { key: 'starmap', icon: '✦', label: '성도', active: isStarMapActive, onClick: handleStarMap },
-    { key: 'search', icon: '⌕', label: '항법', active: activePanel === 'search' && !panelOpen, onClick: () => handleNavPanel('search') },
-    { key: 'discoveries', icon: '⟡', label: '미개척 항로', active: activePanel === 'discoveries' && !panelOpen, onClick: () => handleNavPanel('discoveries') },
-    { key: 'tags', icon: '#', label: '태그', active: activePanel === 'tags' && !panelOpen, onClick: () => handleNavPanel('tags') },
-    { key: 'ai', icon: '◈', label: 'AI 채팅', active: panelOpen, onClick: handleAIChat },
+    { key: 'search', icon: '⌕', label: '항법', active: activePanel === 'search' && !panelOpen && !showSettings, onClick: () => handleNavPanel('search') },
+    { key: 'discoveries', icon: '⟡', label: '미개척 항로', active: activePanel === 'discoveries' && !panelOpen && !showSettings, onClick: () => handleNavPanel('discoveries') },
+    { key: 'constellations', icon: '✧', label: '별자리', active: activePanel === 'constellations' && !panelOpen && !showSettings, onClick: () => handleNavPanel('constellations') },
+    { key: 'ai', icon: '◈', label: 'AI 채팅', active: panelOpen && !showSettings, onClick: handleAIChat },
   ]
 
   return (
@@ -166,7 +167,11 @@ export function Sidebar() {
 
       {/* 설정 */}
       <div style={{ padding: '6px 0', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-        <button className="sn-row sn-nav" onClick={() => setShowSettings(true)}>
+        <button
+          className="sn-row sn-nav"
+          aria-current={showSettings ? 'true' : undefined}
+          onClick={() => setShowSettings(!showSettings)}
+        >
           <span className="sn-icon" aria-hidden="true">⚙</span>
           <span className="sn-row-text">설정</span>
         </button>

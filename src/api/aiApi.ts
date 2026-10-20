@@ -7,10 +7,13 @@ export const aiApi = {
   getSettings: (): Promise<AISettings> =>
     apiFetch<AISettings>('/ai/settings'),
   getOllamaModels: (): Promise<{name: string}[]> =>
-    apiFetch<{name: string}[]>('/ai/models/ollama'),
+    apiFetch<{name: string}[]>('/ai/ollama/models'),
   patchSettings: async (data: Partial<AISettings>): Promise<void> => {
     await apiFetch('/ai/settings', { method: 'PATCH', body: JSON.stringify(data) })
   },
+  // 노트 본문을 채팅 모델로 정리·요약 (저장하지 않음)
+  summarizeNote: (noteId: string): Promise<{ summary: string }> =>
+    apiFetch(`/ai/summarize/${encodeURIComponent(noteId)}`, { method: 'POST' }),
 
   // 대화 기록
   listConversations: (): Promise<ConversationSummary[]> => apiFetch('/conversations'),

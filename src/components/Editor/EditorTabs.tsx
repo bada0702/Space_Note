@@ -3,14 +3,17 @@ import { useNotesStore } from '../../store/notesStore'
 import { formatDateTime } from '../../utils/dateFormat'
 import { notesApi } from '../../api/notesApi'
 import { searchApi } from '../../api/searchApi'
+import { aiApi } from '../../api/aiApi'
 import type { EditorTab } from '../../types'
 
 export function EditorTabs() {
-  const { activeNote, activeTab, setTab, setStarMapFilter, deleteNote, renameNote, toggleFavorite } = useNotesStore()
+  const { activeNote, activeTab, setTab, setStarMapFilter, deleteNote, renameNote, toggleFavorite, saveNote } = useNotesStore()
   const [titleValue, setTitleValue] = useState('')
   const titleRef = useRef<HTMLInputElement>(null)
   const [routeBusy, setRouteBusy] = useState(false)
   const [routeNotice, setRouteNotice] = useState('')
+  const [summaryBusy, setSummaryBusy] = useState(false)
+  const [summary, setSummary] = useState<string | null>(null)
 
   // activeNote가 바뀌면 제목 동기화
   useEffect(() => {
@@ -22,6 +25,7 @@ export function EditorTabs() {
       }
     }
     setRouteNotice('')
+    setSummary(null)
   }, [activeNote?.id])
 
   if (!activeNote) return null
@@ -51,6 +55,34 @@ export function EditorTabs() {
       setRouteNotice('항로 분석 요청 실패')
     } finally {
       setRouteBusy(false)
+    }
+  }
+
+  // AI가 대화 형식을 걷어내고 핵심만 정리한 본문을 만든다 — 미리보기 후 사용자가 적용해야 본문이 바뀐다
+  const handleSummarize = async () => {
+    const id = activeNote.id
+    setSummaryBusy(true)
+    setRouteNotice('AI 요약 중...')
+    try {
+      const { summary } = await aiApi.summarizeNote(id)
+      if (useNotesStore.getState().activeNote?.id !== id) return
+      setRouteNotice('')
+      setSummary(summary)
+    } catch (e: any) {
+      setRouteNotice(`AI 요약 실패: ${String(e?.message ?? e).replace(/^API \d+: /, '')}`)
+    } finally {
+      setSummaryBusy(false)
+    }
+  }
+
+  const applySummary = async () => {
+    if (summary === null) return
+    try {
+      await saveNote(activeNote.id, summary)
+      setSummary(null)
+      setRouteNotice('요약을 본문에 적용했습니다 (Ctrl+Z로 되돌릴 수 있음)')
+    } catch {
+      setRouteNotice('요약 적용(저장) 실패')
     }
   }
 
@@ -125,7 +157,7 @@ export function EditorTabs() {
   ]
 
   return (
-    <div className="glass glass-bar flex items-center gap-4" style={{ padding: '12px 20px 12px 24px', flexWrap: 'wrap' }}>
+    <div className="sn-glass-bar flex items-center gap-4" style={{ padding: '12px 20px 12px 24px', flexWrap: 'wrap' }}>
       {/* 제목 + 기항지 + 날짜 */}
       <div className="flex flex-col min-w-0" style={{ flex: '1 1 280px' }}>
         <div className="flex items-center gap-2">
@@ -188,6 +220,15 @@ export function EditorTabs() {
         )}
         <button
           className="sn-btn"
+          onClick={handleSummarize}
+          disabled={summaryBusy}
+          title="AI가 대화 형식을 지우고 핵심 내용만 다시 정리합니다 (적용 전 미리보기)"
+          style={{ cursor: summaryBusy ? 'wait' : undefined, opacity: summaryBusy ? 0.6 : 1 }}
+        >
+          ✦ AI 요약
+        </button>
+        <button
+          className="sn-btn"
           onClick={handleRouteAnalyze}
           disabled={routeBusy}
           title="이 노트의 키워드·태그를 분석해 같은 키워드를 가진 노트와 항로로 연결합니다"
@@ -198,6 +239,32 @@ export function EditorTabs() {
         <button className="sn-btn" onClick={handlePrint}>인쇄</button>
         <button className="sn-btn is-danger" onClick={handleDelete}>삭제</button>
       </div>
+
+      {summary !== null && (
+        <div
+          role="dialog"
+          aria-label="AI 요약 미리보기"
+          onClick={() => setSummary(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            className="sn-glass"
+            onClick={e => e.stopPropagation()}
+            style={{ width: 'min(760px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: 12, overflow: 'hidden' }}
+          >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, color: 'var(--text-primary)' }}>
+              ✦ AI 요약 미리보기
+            </div>
+            <pre style={{ flex: 1, overflow: 'auto', margin: 0, padding: 16, whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 'var(--fs-sm)', color: 'var(--text-primary)' }}>
+              {summary}
+            </pre>
+            <div className="flex items-center gap-2" style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', justifyContent: 'flex-end' }}>
+              <button className="sn-btn" onClick={() => setSummary(null)}>취소</button>
+              <button className="sn-btn is-primary" onClick={applySummary}>본문 교체</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

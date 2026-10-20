@@ -37,7 +37,7 @@ export function ConversationList() {
   return (
     <div style={{
       width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column',
-      borderRight: '1px solid var(--border)', background: 'var(--bg-panel)',
+      borderRight: '1px solid var(--border)',
     }}>
       <div style={{ padding: '14px 12px', borderBottom: '1px solid var(--border)' }}>
         <button

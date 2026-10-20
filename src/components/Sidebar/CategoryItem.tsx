@@ -269,6 +269,15 @@ export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId,
 
       {open && (
         <ul>
+          <li>
+            <button
+              className="sn-row"
+              style={{ paddingLeft: '32px', color: 'var(--text-tertiary)', fontSize: 'var(--fs-xs)', minHeight: '26px' }}
+              onClick={() => onCreateNote(category.id)}
+            >
+              + 새 노트
+            </button>
+          </li>
           {notes.map(note => (
             <NoteItem
               key={note.id}
@@ -279,15 +288,6 @@ export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId,
               onDoubleClick={() => onDoubleClickNote(note.id)}
             />
           ))}
-          <li>
-            <button
-              className="sn-row"
-              style={{ paddingLeft: '32px', color: 'var(--text-tertiary)', fontSize: 'var(--fs-xs)', minHeight: '26px' }}
-              onClick={() => onCreateNote(category.id)}
-            >
-              + 새 노트
-            </button>
-          </li>
         </ul>
       )}
     </div>

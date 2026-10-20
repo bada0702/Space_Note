@@ -8,7 +8,7 @@ interface NotesState {
   activeNote: Note | null
   activeTab: EditorTab
   vaultPath: string
-  starMapFilter: StarMapFilter  // null = 전체, {type:'category'|'tag', value} = 필터
+  starMapFilter: StarMapFilter  // null = 전체, category = 은하 하나, constellation = 별자리(개념)
   archivedNotes: Note[]
   archivedCount: number
   fetchNotes: (categoryId?: string) => Promise<void>

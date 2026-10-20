@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { SearchResult, Discovery } from '../types'
 import { searchApi } from '../api/searchApi'
 
-type Panel = 'search' | 'discoveries' | 'tags' | null
+type Panel = 'search' | 'discoveries' | 'constellations' | null
 type SortBy = 'created' | 'title'
 type SortDir = 'asc' | 'desc'
 

@@ -29,13 +29,13 @@ export function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-app)' }}>
+    <div style={{ display: 'flex', height: '100%' }}>
     <ConversationList />
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
       {/* 헤더 */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, padding: '14px 24px',
-        borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg-panel)',
+        borderBottom: '1px solid var(--border)', flexShrink: 0,
       }}>
         <span style={{ fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
           AI 채팅

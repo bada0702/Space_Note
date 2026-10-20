@@ -21,9 +21,9 @@ export function SearchPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 헤더 */}
-      <div className="glass" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div className="sn-glass-bar" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{
           fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8,
         }}>

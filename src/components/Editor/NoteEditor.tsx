@@ -19,7 +19,7 @@ const defineThemes: BeforeMount = monacoApi => {
       { token: 'comment', foreground: '75829B' },
     ],
     colors: {
-      'editor.background': '#0D1524',
+      'editor.background': '#00000000',  // 투명 — 뒤의 유리 카드가 보이도록
       'editor.foreground': '#E6EAF2',
       'editorLineNumber.foreground': '#3A4963',
       'editorLineNumber.activeForeground': '#9AA6BD',
@@ -42,7 +42,7 @@ const defineThemes: BeforeMount = monacoApi => {
       { token: 'comment', foreground: '7A869C' },
     ],
     colors: {
-      'editor.background': '#EDF0F5',
+      'editor.background': '#00000000',
       'editor.foreground': '#16233A',
       'editorLineNumber.foreground': '#AEB8C8',
       'editorLineNumber.activeForeground': '#55627A',

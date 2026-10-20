@@ -26,14 +26,23 @@ async function pickFolderViaTauri(): Promise<string | null> {
 
 const MODEL_GROUPS = [...new Set(MODEL_OPTIONS.map(m => m.group))]
 
+const TABS = [
+  { key: 'general', label: '일반' },
+  { key: 'ai', label: 'AI 모델' },
+  { key: 'graph', label: '지식 그래프' },
+  { key: 'mcp', label: 'MCP 서버' },
+] as const
+type SettingsTab = typeof TABS[number]['key']
+
 export function ApiSettings({ onClose }: { onClose: () => void }) {
   const { loadSettings, saveSettings } = useAIStore()
   const [form, setForm] = useState<Partial<AISettings>>({})
   const [savedKeys, setSavedKeys] = useState<Record<string, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [ollamaModels, setOllamaModels] = useState<{name: string}[]>([])
+  const [ollamaModels, setOllamaModels] = useState<{name: string}[] | null>(null)
   const [folderPickerHint, setFolderPickerHint] = useState(false)
+  const [tab, setTab] = useState<SettingsTab>('general')
 
   const refreshSavedKeys = () => {
     const s = useAIStore.getState().settings
@@ -62,7 +71,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
     })
     aiApi.getOllamaModels()
       .then(setOllamaModels)
-      .catch(e => console.error('Failed to fetch Ollama models', e))
+      .catch(e => { console.error('Failed to fetch Ollama models', e); setOllamaModels([]) })
   }, [])
 
   const setField = (k: keyof AISettings, v: string) =>
@@ -119,35 +128,34 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 100,
-        background: 'rgba(0,0,0,0.65)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'var(--bg-panel)', border: '1px solid var(--border)',
-          borderRadius: 12, padding: '24px 28px', width: 420, maxWidth: '90vw',
-          maxHeight: '90vh', overflowY: 'auto',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* 헤더 */}
+      <div className="sn-glass-bar" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)' }}>
             시스템 설정
           </span>
           <button
             onClick={onClose}
+            aria-label="설정 닫기"
             style={{ color: 'var(--text-secondary)', fontSize: 16, lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
           >
             ✕
           </button>
         </div>
+        <div className="sn-segment" role="group" aria-label="설정 항목">
+          {TABS.map(t => (
+            <button key={t.key} aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      <div style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {tab === 'general' && (
           <div>
             <label htmlFor="vault_dir" style={labelStyle}>노트 저장 경로 (Vault Dir)</label>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -195,8 +203,9 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               </p>
             )}
           </div>
+          )}
 
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+          {tab === 'ai' && (<>
           {[
             { key: 'anthropic_api_key' as const, label: 'Anthropic API Key (Claude)', placeholder: 'sk-ant-...' },
             { key: 'openai_api_key'    as const, label: 'OpenAI API Key (GPT)',       placeholder: 'sk-...' },
@@ -237,26 +246,33 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
                   ))}
                 </optgroup>
               ))}
-              {ollamaModels.length > 0 && (
-                <optgroup label="Ollama Models (로컬)">
+              {ollamaModels && ollamaModels.length > 0 && (
+                <optgroup label="Ollama (로컬)">
                   {ollamaModels.map(m => (
-                    <option key={m.name} value={m.name}>{m.name}</option>
+                    <option key={m.name} value={`ollama:${m.name}`}>{m.name}</option>
                   ))}
                 </optgroup>
               )}
-              {form.default_model && !MODEL_OPTIONS.find(m => m.value === form.default_model) && !ollamaModels.find(m => m.name === form.default_model) && (
+              {form.default_model && !MODEL_OPTIONS.find(m => m.value === form.default_model) && !ollamaModels?.find(m => `ollama:${m.name}` === form.default_model) && (
                 <option value={form.default_model}>{form.default_model} (Unknown)</option>
               )}
             </select>
+            {ollamaModels && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
+                {ollamaModels.length > 0
+                  ? `Ollama 로컬 모델 ${ollamaModels.length}개를 찾았습니다.`
+                  : 'Ollama 서버에 연결되지 않았거나 설치된 모델이 없습니다 — Ollama를 실행하고 모델을 받은 뒤(ollama pull) 이 화면을 다시 여세요. 서버 주소는 백엔드 환경변수 OLLAMA_BASE_URL로 바꿀 수 있습니다.'}
+              </p>
+            )}
           </div>
+          </>)}
 
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-          <GraphSettings />
-
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-          <McpSettings />
+          {tab === 'graph' && <GraphSettings />}
+          {tab === 'mcp' && <McpSettings />}
         </div>
 
+        {/* 지식 그래프·MCP 탭은 각자 동작 버튼을 가지므로 저장 버튼은 폼 탭에만 둔다 */}
+        {(tab === 'general' || tab === 'ai') && (
         <button
           onClick={handleSave}
           disabled={saving}
@@ -270,6 +286,8 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
         >
           {saving ? '저장 중...' : saved ? '✓ 저장됨' : '저장'}
         </button>
+        )}
+      </div>
       </div>
     </div>
   )

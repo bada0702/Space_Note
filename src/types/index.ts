@@ -34,6 +34,12 @@ export type AIModel =
   | 'gemini-3.7-flash'
   | 'gemini-3.8-flash'
   | 'gemini-2.5-flash'
+  | 'gemini-4-argon'
+  | 'claude-sonnet-5-5'
+  | 'claude-opus-5-5'
+  | 'gpt-6-luna'
+  | 'gpt-6.1-sol'
+  | 'gpt-6-astra'
   | (string & {})
 
 /** RAG 답변의 근거 노트 — path는 노트를 고른 이유(지식 그래프 관계 경로 또는 키워드 일치). */
@@ -137,16 +143,23 @@ export interface Entity {
   created_at: string
 }
 
-export interface TagSummary {
-  tag: string
-  count: number
+/** 별자리: 여러 노트(은하)에 걸친 지식 그래프 개념 */
+export interface ConstellationSummary {
+  id: string
+  name: string
+  type: string
+  note_count: number
+  galaxy_count: number
 }
 
-export interface TaggedNote {
+export interface ConstellationNote {
   id: string
   title: string
   category_id: string | null
   modified_at: string
 }
 
-export type StarMapFilter = { type: 'category' | 'tag'; value: string } | null
+export type StarMapFilter =
+  | { type: 'category'; value: string }
+  | { type: 'constellation'; value: string; label: string } // value = 개념 id
+  | null

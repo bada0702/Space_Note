@@ -24,15 +24,24 @@
   --accent-primary: #16233A;
   --accent-primary-text: #F7F8FB;
 
-  /* 기존 glass 토큰 — 블러 없이 단단한 면으로 */
-  --glass-bg: var(--bg-panel);
-  --glass-border: var(--border);
-  --glass-blur: none;
+  /* Liquid Glass 토큰 — 반투명 면 + 배경 블러 + 윗변 반사광 */
+  --glass-bg: rgba(247, 248, 251, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-blur: blur(28px) saturate(170%);
+  --glass-radius: 18px;
   --glass-shadow: 0 8px 28px rgba(22, 35, 58, 0.14);
+  /* 유리 뒤 우주 배경 (성도 탭 외 화면) */
+  --space-bg:
+    radial-gradient(ellipse 60% 50% at 15% 20%, rgba(138, 160, 214, 0.45), transparent 70%),
+    radial-gradient(ellipse 50% 45% at 85% 75%, rgba(214, 178, 120, 0.35), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 70% 15%, rgba(176, 150, 214, 0.30), transparent 70%),
+    #E4E9F2;
 
   /* 타이포 */
   --font-body: 'Pretendard Variable', 'Pretendard', -apple-system, 'Apple SD Gothic Neo', sans-serif;
-  --font-title: 'Gowun Batang', 'Nanum Myeongjo', serif;
+  --font-title: 'Space Grotesk', var(--font-body);
+  --font-logo: var(--font-title);
   --font-mono: 'JetBrains Mono', 'Pretendard Variable', monospace;
   --fs-xs: 12px;   /* 보조 정보 (최소 크기) */
   --fs-sm: 13px;   /* 목록, 버튼 */
@@ -57,7 +66,15 @@
   --accent-primary: #E9C46A;
   --accent-primary-text: #0D1524;
 
+  --glass-bg: rgba(16, 24, 40, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-highlight: rgba(255, 255, 255, 0.16);
   --glass-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  --space-bg:
+    radial-gradient(ellipse 55% 45% at 18% 22%, rgba(74, 98, 170, 0.40), transparent 70%),
+    radial-gradient(ellipse 45% 40% at 82% 78%, rgba(150, 110, 60, 0.28), transparent 70%),
+    radial-gradient(ellipse 35% 35% at 68% 12%, rgba(110, 70, 160, 0.30), transparent 70%),
+    #060b16;
 }
 
 html, body, #root { height: 100%; }
@@ -82,10 +99,119 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   border-radius: 3px;
 }
 
-/* 기존 glass 클래스 호환 */
-.glass { background: var(--glass-bg) !important; }
-.glass-sidebar { border-right: 1px solid var(--border) !important; }
-.glass-bar { border-bottom: 1px solid var(--border) !important; }
+/* ── Liquid Glass 면 ─────────────────────────
+   클래스명을 .glass로 쓰지 않는다: liquid-glass-react 내부 요소가 .glass를 쓰므로 충돌한다. */
+.sn-space {
+  background: var(--space-bg);
+}
+/* 작은 별 점 — 그라데이션만으로는 '우주'로 안 읽혀서 추가 */
+.sn-space::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 34%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 47% 72%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 78% 28%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 63% 48%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 28% 86%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 91% 61%, rgba(255, 255, 255, 0.7), transparent);
+  background-size: 420px 420px;
+  opacity: 0;
+}
+.dark .sn-space::before { opacity: 1; }
+
+.sn-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+}
+/* 밝은 모드 + 성도: 검은 밤하늘 위에 옅은 흰 유리를 얹으면 탁한 회색이 되어 글씨가 묻힌다.
+   더 진한 흰 서리유리 + 강한 반사광으로 덮어쓴다. (성도 범례·안내는 .dark 범위라 영향 없음) */
+:root:not(.dark) .sn-shell.is-map {
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.95), rgba(240, 244, 250, 0.86));
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-highlight: #ffffff;
+  --glass-blur: blur(32px) saturate(180%);
+  --glass-shadow: 0 10px 36px rgba(0, 0, 0, 0.5);
+}
+/* 유리 카드 안의 머리 띠 — 카드 자체가 유리이므로 구분선만 */
+.sn-glass-bar { border-bottom: 1px solid var(--border); }
+/* 성도 위에서는 탭 바가 독립된 유리 카드로 뜬다 */
+.sn-main.is-map { gap: 10px; }
+.sn-main.is-map .sn-glass-bar {
+  position: relative;
+  z-index: 1;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+}
+
+/* ── 롤오버 Liquid Glass ─────────────────────
+   메뉴 행·버튼에 올리면 유리 알약이 탄성 있게 떠오르고, 반사광·위치가 커서를 따라간다.
+   행이 수백 개라 liquid-glass-react 인스턴스 대신 ::after 한 겹으로 그린다.
+   --lx/--ly(커서 위치 %, 0~100)는 AppLayout의 전역 pointermove가 hover 중인 요소에만 넣는다. */
+:root {
+  --liquid-tint: rgba(255, 255, 255, 0.55);
+  --liquid-rim: rgba(255, 255, 255, 0.95);
+  --liquid-glow: rgba(255, 255, 255, 0.85);
+  --liquid-edge: rgba(22, 35, 58, 0.08);
+  --liquid-shadow: 0 4px 14px rgba(22, 35, 58, 0.12);
+}
+.dark {
+  --liquid-tint: rgba(255, 255, 255, 0.06);
+  --liquid-rim: rgba(255, 255, 255, 0.30);
+  --liquid-glow: rgba(255, 255, 255, 0.16);
+  --liquid-edge: rgba(255, 255, 255, 0.10);
+  --liquid-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.sn-row, .sn-cat-head, .sn-atlas-item, .sn-btn, .sn-icon-btn, .sn-segment button {
+  position: relative;
+  isolation: isolate;  /* ::after(z-index:-1)가 행 배경 위·글자 아래에 오도록 */
+}
+.sn-row::after, .sn-cat-head::after, .sn-atlas-item::after,
+.sn-btn::after, .sn-icon-btn::after, .sn-segment button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at var(--lx, 50%) var(--ly, 0%), var(--liquid-glow), transparent 65%),
+    var(--liquid-tint);
+  box-shadow:
+    inset 0 1px 0 var(--liquid-rim),
+    inset 0 0 0 1px var(--liquid-edge),
+    var(--liquid-shadow);
+  -webkit-backdrop-filter: blur(6px) saturate(160%);
+  backdrop-filter: blur(6px) saturate(160%);
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 160ms ease, transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* 전폭 목록 행은 양옆을 띄운 둥근 알약으로 */
+.sn-row::after, .sn-cat-head::after, .sn-atlas-item::after { inset: 1px 6px; border-radius: 10px; }
+.sn-row:hover::after, .sn-row-wrap:hover .sn-row::after, .sn-cat-head:hover::after,
+button.sn-atlas-item:hover::after, .sn-btn:hover::after, .sn-icon-btn:hover::after,
+.sn-segment button:hover:not([aria-pressed='true'])::after {
+  opacity: 1;
+  /* 커서 쪽으로 살짝 끌려가는 '액체' 느낌 */
+  transform: translate(calc((var(--lx, 50%) - 50%) * 0.04), calc((var(--ly, 50%) - 50%) * 0.06)) scale(1);
+}
+.sn-btn, .sn-icon-btn, .sn-segment button { transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1), color 120ms, border-color 120ms; }
+.sn-btn:active, .sn-icon-btn:active, .sn-segment button:active { transform: scale(0.95); }
+@media (prefers-reduced-motion: reduce) {
+  .sn-row::after, .sn-cat-head::after, .sn-atlas-item::after,
+  .sn-btn::after, .sn-icon-btn::after, .sn-segment button::after { transition: opacity 120ms; transform: none !important; }
+}
 
 /* ── 공용 UI 조각 ───────────────────────────── */
 
@@ -117,7 +243,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   cursor: pointer;
   transition: background-color 120ms, color 120ms;
 }
-.sn-row:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sn-row:hover { color: var(--text-primary); }
 .sn-row[aria-current='true'] { color: var(--text-primary); background: var(--star-soft); }
 /* 활성 표식: 왼쪽 막대 대신 작은 별 */
 .sn-row[aria-current='true']::before {
@@ -149,7 +275,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   color: var(--text-tertiary);
   border-radius: 4px;
 }
-.sn-icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sn-icon-btn:hover { color: var(--text-primary); }
 .sn-icon-btn.is-danger:hover { color: var(--danger); }
 
 /* 버튼 */
@@ -167,7 +293,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   white-space: nowrap;
   transition: color 120ms, border-color 120ms, background-color 120ms;
 }
-.sn-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sn-btn:hover { color: var(--text-primary); }
 .sn-btn.is-danger:hover { color: var(--danger); border-color: var(--danger); }
 .sn-btn.is-primary { background: var(--accent-primary); color: var(--accent-primary-text); border-color: transparent; font-weight: 600; }
 .sn-btn.is-primary:disabled { background: var(--bg-input); color: var(--text-tertiary); cursor: not-allowed; }
@@ -285,7 +411,6 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   color: var(--text-primary);
   cursor: pointer;
 }
-.sn-cat-head:hover { background: var(--bg-hover); }
 .sn-cat-head .sn-cat-tools { display: none; gap: 1px; }
 .sn-cat-head:hover .sn-cat-tools, .sn-cat-head:focus-within .sn-cat-tools { display: flex; }
 .sn-cat-head:hover .sn-count-cat, .sn-cat-head:focus-within .sn-count-cat { display: none; }
@@ -355,11 +480,12 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   max-height: calc(100% - 96px);
   display: flex;
   flex-direction: column;
-  background: rgba(13, 21, 36, 0.78);
-  border: 1px solid rgba(233, 196, 106, 0.22);
-  border-radius: 10px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   overflow: hidden;
 }
 .sn-atlas-head {
@@ -403,7 +529,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--star); }
   text-align: left;
   transition: background-color 120ms, color 120ms;
 }
-button.sn-atlas-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+button.sn-atlas-item:hover { color: var(--text-primary); }
 .sn-atlas-item[aria-pressed='true'] { background: var(--star-soft); color: var(--text-primary); font-weight: 600; }
 .sn-atlas-item.is-static { cursor: default; color: var(--text-tertiary); }
 .sn-atlas-dot {
@@ -427,7 +553,7 @@ button.sn-atlas-item:hover { background: var(--bg-hover); color: var(--text-prim
 .sn-atlas-reset:hover { background: var(--star-soft); }
 
 .sn-star-tip {
-  position: absolute;
+  position: fixed;   /* 성도 캔버스가 화면 전체(fixed)라 좌표가 곧 뷰포트 좌표 */
   z-index: 10;
   padding: 6px 12px;
   font-size: var(--fs-sm);
@@ -440,19 +566,18 @@ button.sn-atlas-item:hover { background: var(--bg-hover); color: var(--text-prim
   white-space: nowrap;
 }
 
+/* 조작 안내 알약 — liquid-glass-react가 유리를 그리고, 여기서는 위치와 글자만 */
 .sn-controls {
   position: absolute;
-  bottom: 16px;
+  bottom: 40px;
   left: 50%;
-  transform: translateX(-50%);
+  z-index: 5;
+}
+.sn-controls-text {
   display: flex;
   gap: 16px;
-  padding: 6px 14px;
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  background: rgba(13, 21, 36, 0.6);
-  border-radius: 999px;
-  pointer-events: none;
+  font: 400 var(--fs-xs)/1.4 var(--font-body);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .sn-controls kbd {
@@ -465,9 +590,174 @@ button.sn-atlas-item:hover { background: var(--bg-hover); color: var(--text-prim
   margin-right: 3px;
 }
 
+/* 노트 이름 팻말 — 이름판 + 행성을 가리키는 막대. 기준점(left/top 0)을 행성 위치로 옮겨 쓴다 */
+.sn-signposts {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.sn-signpost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+.sn-signpost > * { position: absolute; left: 0; }
+.sn-signpost-board {
+  bottom: 27px;                /* 막대 길이 + 행성 육각형 반경만큼 위 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  font: 500 11px/1.35 var(--font-body);
+  color: #f2f5fa;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  /* 리퀴드 글래스 — 위쪽 반사광 + 옅은 유리 틴트, 뒤 배경을 흐리고 채도를 끌어올린다 */
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.22), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03));
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 var(--liquid-rim),                    /* 윗면 하이라이트 */
+    inset 0 -1px 1px rgba(255, 255, 255, 0.08),         /* 아랫면 굴절광 */
+    inset 0 0 0 1px var(--liquid-edge),
+    0 6px 18px rgba(0, 0, 0, 0.35);
+  opacity: 0.92;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  transition: transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 160ms ease;
+}
+.sn-signpost-board::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sign-color, #e6eaf2);
+  box-shadow: 0 0 6px var(--sign-color, #e6eaf2);
+}
+.sn-signpost-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sn-signpost-pole {
+  bottom: 11px;
+  width: 1px;
+  height: 16px;
+  background: linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.08));
+}
+/* 막대 끝 — 행성을 가리키는 작은 유리 구슬 */
+.sn-signpost-pole::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  bottom: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.2));
+}
+.sn-signpost.is-hover .sn-signpost-board {
+  opacity: 1;
+  transform: translateX(-50%) scale(1.06);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.32), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+}
+@media (prefers-reduced-motion: reduce) {
+  .sn-signpost-board { transition: opacity 120ms; }
+  .sn-signpost.is-hover .sn-signpost-board { transform: translateX(-50%); }
+}
+
+/* 성도 행성 검색 — 오른쪽 위 유리 패널 */
+.sn-starsearch {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 6;
+  width: 280px;
+  padding: 6px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+.sn-starsearch input {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font: 400 var(--fs-sm)/1 var(--font-body);
+  outline: none;
+}
+.sn-starsearch input:focus { border-color: var(--accent-primary); }
+.sn-starsearch ul { margin-top: 6px; max-height: 320px; overflow-y: auto; }
+.sn-starsearch-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  text-align: left;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+}
+.sn-starsearch li[aria-selected='true'] .sn-starsearch-item { background: rgba(255, 255, 255, 0.08); }
+.sn-starsearch-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-starsearch-cat { flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-secondary); }
+.sn-starsearch-empty { padding: 8px 10px 4px; font-size: var(--fs-xs); color: var(--text-secondary); }
+
+/* 성도 타임라인 — 조작 안내 알약 위에 뜨는 유리 패널 */
+.sn-timeline {
+  position: absolute;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: min(520px, calc(100% - 48px));
+  padding: 10px 16px 8px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(14px);
+}
+.sn-timeline-head {
+  display: flex;
+  justify-content: space-between;
+  font: 600 var(--fs-sm)/1.4 var(--font-body);
+  color: var(--text-primary);
+}
+.sn-timeline-count { font-weight: 400; color: var(--text-secondary); }
+.sn-timeline input[type='range'] {
+  width: 100%;
+  margin: 6px 0 2px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+.sn-timeline-ends {
+  display: flex;
+  justify-content: space-between;
+  font: 400 var(--fs-xs)/1.4 var(--font-body);
+  color: var(--text-secondary);
+}
+
 @media (max-width: 760px) {
   .sn-atlas { top: 12px; left: 12px; width: 200px; max-height: 60%; }
   .sn-controls { display: none; }
+  .sn-timeline { bottom: 16px; width: calc(100% - 24px); }
+  .sn-starsearch { top: 12px; right: 12px; width: 180px; }
 }
 
 /* AI 채팅 — 답변 근거 노트 */

@@ -2,27 +2,28 @@ import { useEffect, useState } from 'react'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useSearchStore } from '../../store/searchStore'
-import { tagsApi } from '../../api/tagsApi'
-import type { TagSummary, TaggedNote } from '../../types'
+import { constellationsApi } from '../../api/constellationsApi'
+import type { ConstellationSummary, ConstellationNote } from '../../types'
 
-export function TagsPanel() {
+/** 별자리: 여러 은하에 흩어진 노트들을 지식 그래프 개념 하나로 잇는다 */
+export function ConstellationsPanel() {
   const { openNote, setTab, setStarMapFilter } = useNotesStore()
   const { categories } = useCategoriesStore()
   const { setPanel } = useSearchStore()
-  const [tags, setTags] = useState<TagSummary[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [notes, setNotes] = useState<TaggedNote[]>([])
+  const [items, setItems] = useState<ConstellationSummary[]>([])
+  const [selected, setSelected] = useState<ConstellationSummary | null>(null)
+  const [notes, setNotes] = useState<ConstellationNote[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    tagsApi.list().then(setTags).finally(() => setLoading(false))
+    constellationsApi.list().then(setItems).finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
     if (!selected) { setNotes([]); return }
     setLoading(true)
-    tagsApi.notesForTag(selected).then(setNotes).finally(() => setLoading(false))
+    constellationsApi.notes(selected.id).then(setNotes).finally(() => setLoading(false))
   }, [selected])
 
   const catColor = (id: string | null) =>
@@ -30,22 +31,24 @@ export function TagsPanel() {
 
   const showInStarMap = () => {
     if (!selected) return
-    setStarMapFilter({ type: 'tag', value: selected })
+    setStarMapFilter({ type: 'constellation', value: selected.id, label: selected.name })
     setTab('starmap')
     setPanel(null)
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-app)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 헤더 */}
-      <div className="glass" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      <div className="sn-glass-bar" style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{
           fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4,
         }}>
-          태그
+          {selected ? `✧ ${selected.name}` : '별자리'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.6 }}>
-          {selected ? `#${selected} 가 붙은 노트` : '본문에 #태그를 적으면 자동으로 모입니다'}
+          {selected
+            ? `노트 ${selected.note_count}개 · 은하 ${selected.galaxy_count}개에 걸친 별자리`
+            : '여러 노트에 걸친 핵심 개념을 지식 그래프가 찾아 이어 줍니다'}
         </div>
       </div>
 
@@ -60,7 +63,7 @@ export function TagsPanel() {
                 borderRadius: 4, padding: '3px 10px', cursor: 'pointer',
               }}
             >
-              ← 전체 태그
+              ← 전체 별자리
             </button>
             <button
               onClick={showInStarMap}
@@ -84,20 +87,20 @@ export function TagsPanel() {
           </div>
         )}
 
-        {!loading && !selected && tags.length === 0 && (
+        {!loading && !selected && items.length === 0 && (
           <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}>#</div>
+            <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.3 }}>✧</div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.6, lineHeight: 1.6 }}>
-              아직 태그가 없습니다.<br />
-              노트 본문에 #태그 를 적어보세요.
+              아직 별자리가 없습니다.<br />
+              설정의 지식 그래프에서 노트 분석을 시작하면 나타납니다.
             </div>
           </div>
         )}
 
-        {!loading && !selected && tags.map(t => (
+        {!loading && !selected && items.map(t => (
           <button
-            key={t.tag}
-            onClick={() => setSelected(t.tag)}
+            key={t.id}
+            onClick={() => setSelected(t)}
             style={{
               display: 'flex', alignItems: 'center', width: '100%', textAlign: 'left',
               padding: '8px 16px', background: 'none', cursor: 'pointer',
@@ -107,10 +110,14 @@ export function TagsPanel() {
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-              #{t.tag}
+              {t.name}
             </span>
+            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-tertiary)' }}>{t.type}</span>
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--accent-line)', fontWeight: 600 }}>
-              {t.count}개 노트
+              노트 {t.note_count}
+            </span>
+            <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-secondary)', minWidth: 44, textAlign: 'right' }}>
+              은하 {t.galaxy_count}
             </span>
           </button>
         ))}

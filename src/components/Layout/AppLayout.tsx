@@ -1,14 +1,20 @@
 import { useTheme } from './ThemeProvider'
 import { useState, useEffect } from 'react'
+import LiquidGlass from 'liquid-glass-react'
 
 const SIDEBAR_WIDTH = 252
+const GAP = 10  // 화면 가장자리·패널 사이 여백 — 유리 패널 뒤 배경이 보이도록
+// globals.css '롤오버 Liquid Glass'의 대상 선택자와 맞춘다
+const LIQUID_TARGETS = '.sn-row, .sn-cat-head, .sn-atlas-item, .sn-btn, .sn-icon-btn, .sn-segment button'
 
 interface AppLayoutProps {
   sidebar: React.ReactNode
   main: React.ReactNode
+  /** 성도 탭: 메인 영역을 유리 카드로 덮지 않고 별지도를 그대로 노출 */
+  isMap: boolean
 }
 
-export function AppLayout({ sidebar, main }: AppLayoutProps) {
+export function AppLayout({ sidebar, main, isMap }: AppLayoutProps) {
   const { theme, toggle } = useTheme()
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     return localStorage.getItem('sn-sidebar-open') !== 'false'
@@ -29,17 +35,36 @@ export function AppLayout({ sidebar, main }: AppLayoutProps) {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  // 롤오버 Liquid Glass: hover 중인 행·버튼에만 커서 위치(--lx/--ly)를 넣어 반사광이 따라오게 한다
+  useEffect(() => {
+    const handler = (e: PointerEvent) => {
+      const el = (e.target as Element | null)?.closest?.<HTMLElement>(LIQUID_TARGETS)
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--lx', `${((e.clientX - r.left) / r.width) * 100}%`)
+      el.style.setProperty('--ly', `${((e.clientY - r.top) / r.height) * 100}%`)
+    }
+    window.addEventListener('pointermove', handler, { passive: true })
+    return () => window.removeEventListener('pointermove', handler)
+  }, [])
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden" style={{ background: 'var(--bg-app)' }}>
+    <div className={`sn-shell flex h-screen w-screen overflow-hidden ${isMap ? 'is-map' : ''}`} style={{ padding: GAP }}>
+      {/* 유리 뒤 우주 배경 — 성도 탭에서는 별지도 캔버스가 이 위를 덮는다 */}
+      <div className="sn-space" aria-hidden="true" style={{ position: 'fixed', inset: 0 }} />
+
       {/* 사이드바 */}
       <aside
-        className="glass glass-sidebar"
+        className="sn-glass"
         style={{
           width: sidebarOpen ? `${SIDEBAR_WIDTH}px` : '0px',
+          marginRight: sidebarOpen ? GAP : 0,
+          opacity: sidebarOpen ? 1 : 0,
           flexShrink: 0,
           overflow: 'hidden',
-          transition: 'width 200ms ease',
+          transition: 'width 200ms ease, margin 200ms ease, opacity 200ms ease',
           position: 'relative',
+          zIndex: 2,  // 성도 캔버스(메인 안의 fixed 레이어)보다 위
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -60,7 +85,7 @@ export function AppLayout({ sidebar, main }: AppLayoutProps) {
               <ellipse cx="9" cy="9" rx="8" ry="4" stroke="currentColor" strokeWidth="1.1" opacity="0.55" />
               <circle cx="9" cy="9" r="1.8" fill="var(--star)" />
             </svg>
-            <span style={{ fontFamily: 'var(--font-title)', fontSize: '17px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'var(--font-logo)', fontSize: '13px', fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
               SpaceNote
             </span>
           </div>
@@ -77,36 +102,51 @@ export function AppLayout({ sidebar, main }: AppLayoutProps) {
         {sidebar}
       </aside>
 
-      {/* 사이드바 토글 버튼 */}
-      <button
-        onClick={() => setSidebarOpen(o => !o)}
-        aria-label={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
-        title={`${sidebarOpen ? '사이드바 닫기' : '사이드바 열기'} (Ctrl+\\)`}
+      {/* 사이드바 토글 버튼 — 떠 있는 작은 알약이라 liquid-glass-react를 그대로 쓴다.
+          LiquidGlass는 style의 top/left를 '중심점'으로 삼으므로(translate -50%) 크기 0인 고정 앵커에 붙인다. */}
+      <div
         style={{
           position: 'fixed',
-          left: sidebarOpen ? `${SIDEBAR_WIDTH - 7}px` : '0px',
+          left: sidebarOpen ? GAP + SIDEBAR_WIDTH + GAP / 2 : GAP + 4,
           top: '50%',
-          transform: 'translateY(-50%)',
           zIndex: 50,
-          width: '14px',
-          height: '40px',
-          background: 'var(--bg-panel)',
-          border: '1px solid var(--border)',
-          borderRadius: '0 6px 6px 0',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '12px',
-          color: 'var(--text-tertiary)',
           transition: 'left 200ms ease',
         }}
       >
-        {sidebarOpen ? '‹' : '›'}
-      </button>
+        <LiquidGlass
+          cornerRadius={999}
+          padding="0"
+          displacementScale={40}
+          elasticity={0.3}
+          style={{ position: 'absolute', top: '0px', left: '0px' }}
+        >
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            aria-label={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
+            title={`${sidebarOpen ? '사이드바 닫기' : '사이드바 열기'} (Ctrl+\\)`}
+            style={{
+              width: 18,
+              height: 44,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              font: '500 14px/1 var(--font-body)',
+              color: 'var(--text-secondary)',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            {sidebarOpen ? '‹' : '›'}
+          </button>
+        </LiquidGlass>
+      </div>
 
       {/* 메인 편집 영역 */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main
+        className={`sn-main flex-1 flex flex-col overflow-hidden ${isMap ? 'is-map' : 'sn-glass'}`}
+        style={{ position: 'relative', zIndex: 1, minWidth: 0 }}
+      >
         {main}
       </main>
     </div>
