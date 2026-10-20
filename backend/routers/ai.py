@@ -3,7 +3,7 @@ import math
 import re
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from db import get_conn
@@ -18,6 +18,16 @@ RAG_EXCERPT = 1200
 RAG_MAX_KEYWORDS = 8
 GRAPH_WEIGHT = 0.6
 KEYWORD_WEIGHT = 0.4
+
+SUMMARY_SYSTEM = (
+    "너는 노트 정리 도우미다. 사용자가 준 노트를 핵심 내용 중심의 마크다운 문서로 다시 정리한다.\n"
+    "- 노트가 AI와의 대화 기록이면 질문·답변 형식, 화자 표시(사용자:, AI:, You said 등), "
+    "인사말·맞장구·되묻기 같은 대화 군더더기를 모두 없애고 결론과 정보만 남긴다.\n"
+    "- 주제별 소제목(##)과 글머리표로 구조화하고, 중복된 설명은 하나로 합친다.\n"
+    "- 코드 블록, 명령어, 설정값, 수치, 고유명사는 원문 그대로 보존한다.\n"
+    "- 원문에 없는 내용을 지어내지 않는다.\n"
+    "- 노트의 주 언어로 작성하고, 정리된 본문만 출력한다 (앞뒤 설명 문구 금지)."
+)
 
 
 def _get_settings() -> dict:
@@ -289,3 +299,24 @@ def chat(req: ChatRequest):
             yield f"data: {json.dumps({'error': str(e)})}\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post("/ai/summarize/{note_id}")
+def summarize(note_id: str):
+    """노트 본문을 채팅 모델로 정리·요약해 돌려준다. 저장은 하지 않는다 — 적용 여부는 화면에서 사용자가 정한다."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT content FROM notes WHERE id = ?", (note_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    content = (row["content"] or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="요약할 내용이 없습니다")
+
+    client, model = _client_for(_get_settings()["default_model"])
+    try:
+        summary = "".join(
+            client.stream_chat(model, SUMMARY_SYSTEM, [{"role": "user", "content": content}])
+        ).strip()
+    except Exception as e:  # noqa: BLE001 - 제공자 오류 메시지를 화면에 그대로 보여 준다
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"summary": summary}

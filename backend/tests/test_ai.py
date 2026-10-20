@@ -218,3 +218,58 @@ def test_retrieve_returns_ranked_notes_without_recent_fallback(client):
 
     r = client.get("/ai/retrieve", params={"q": "존재하지않는키워드"}, headers=AUTH)
     assert r.json() == []
+
+
+def test_summarize_requires_auth(client):
+    assert client.post("/ai/summarize/x").status_code == 401
+
+
+def test_summarize_unknown_note_404(client):
+    assert client.post("/ai/summarize/nope", headers=AUTH).status_code == 404
+
+
+def test_summarize_uses_default_model_and_note_content(client, monkeypatch):
+    from routers import ai as ai_router
+
+    note = client.post(
+        "/notes", json={"title": "대화 노트", "content": "사용자: 질문\nAI: 답변 내용"}, headers=AUTH
+    ).json()
+    client.patch("/ai/settings", json={"default_model": "ollama:llama3:8b"}, headers=AUTH)
+
+    captured = {}
+
+    def fake_stream_chat(model, system, messages):
+        captured["model"] = model
+        captured["messages"] = messages
+        yield "## 핵심\n"
+        yield "- 답변 내용"
+
+    monkeypatch.setattr(ai_router.ollama_client, "stream_chat", fake_stream_chat)
+
+    r = client.post(f"/ai/summarize/{note['id']}", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json() == {"summary": "## 핵심\n- 답변 내용"}
+    assert captured["model"] == "llama3:8b"
+    assert "AI: 답변 내용" in captured["messages"][0]["content"]
+    # 요약은 미리보기용 — 원문은 그대로여야 한다
+    assert client.get(f"/notes/{note['id']}", headers=AUTH).json()["content"] == "사용자: 질문\nAI: 답변 내용"
+
+
+def test_summarize_reports_provider_error(client, monkeypatch):
+    from routers import ai as ai_router
+
+    note = client.post("/notes", json={"title": "n", "content": "본문"}, headers=AUTH).json()
+
+    def boom(model, system, messages):
+        raise RuntimeError("API 키 없음")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(ai_router.anthropic_client, "stream_chat", boom)
+    r = client.post(f"/ai/summarize/{note['id']}", headers=AUTH)
+    assert r.status_code == 502
+    assert "API 키 없음" in r.json()["detail"]
+
+
+def test_summarize_empty_note_400(client):
+    note = client.post("/notes", json={"title": "빈 노트", "content": "  "}, headers=AUTH).json()
+    assert client.post(f"/ai/summarize/{note['id']}", headers=AUTH).status_code == 400
