@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from db import get_conn
 from models import SettingsPatch, ChatRequest
-from services import anthropic_client, gemini_client, graph_retrieval, ollama_client
+from services import anthropic_client, gemini_client, graph_retrieval, ollama_client, openai_client
 from services.extraction import kiwi, is_korean_stopword_or_ending, strip_korean_particles
 
 router = APIRouter()
@@ -33,7 +33,7 @@ def get_settings():
     return _get_settings()
 
 
-@router.get("/ai/models/ollama")
+@router.get("/ai/ollama/models")
 def get_ollama_models():
     return ollama_client.list_models()
 
@@ -259,26 +259,31 @@ def retrieve(q: str = "", category_id: Optional[str] = None):
     ]
 
 
+def _client_for(model: str):
+    """모델 이름으로 제공자 선택 (ollama:* → Ollama, gemini-* → Google, claude-* → Anthropic, gpt-* → OpenAI)."""
+    if ollama_client.is_ollama_model(model):
+        return ollama_client, ollama_client.model_name(model)
+    if model.startswith("gemini"):
+        return gemini_client, model
+    if model.startswith("claude"):
+        return anthropic_client, model
+    return openai_client, model
+
+
 @router.post("/ai/chat")
 def chat(req: ChatRequest):
     system, sources = _build_system(req)
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
-    # 모델 이름으로 제공자 선택 (gemini-* → Google, claude-* → Anthropic, 그 외 → Ollama)
-    if req.model.startswith("gemini"):
-        client = gemini_client
-    elif req.model.startswith("claude"):
-        client = anthropic_client
-    else:
-        client = ollama_client
+    client, model = _client_for(req.model)
 
     def gen():
         try:
             # 답변 텍스트보다 먼저 근거 노트를 한 번 보낸다 (화면에서 답변 아래에 표시)
             if sources:
                 yield f"data: {json.dumps({'sources': sources}, ensure_ascii=False)}\n"
-            for text in client.stream_chat(req.model, system, messages):
-                yield f"data: {json.dumps({'text': text})}\n"
+            for text in client.stream_chat(model, system, messages):
+                yield f"data: {json.dumps({'text': text}, ensure_ascii=False)}\n"
             yield "data: [DONE]\n"
         except Exception as e:  # noqa: BLE001 - 스트림 중 오류를 클라이언트로 전달
             yield f"data: {json.dumps({'error': str(e)})}\n"

@@ -115,6 +115,27 @@ def test_chat_routes_ollama_prefix_to_ollama_client(client, monkeypatch):
     assert captured["model"] == "llama3:8b"
 
 
+def test_chat_routes_gpt_prefix_to_openai_client(client, monkeypatch):
+    from routers import ai as ai_router
+
+    captured = {}
+
+    def fake_stream_chat(model, system, messages):
+        captured["model"] = model
+        yield "GPT 응답"
+
+    monkeypatch.setattr(ai_router.openai_client, "stream_chat", fake_stream_chat)
+
+    r = client.post(
+        "/ai/chat",
+        json={"model": "gpt-6-luna", "messages": [{"role": "user", "content": "hi"}]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200
+    assert "GPT 응답" in r.text
+    assert captured["model"] == "gpt-6-luna"
+
+
 def _capture_system(client, monkeypatch, body):
     from routers import ai as ai_router
 

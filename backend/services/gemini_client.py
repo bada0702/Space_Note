@@ -11,6 +11,7 @@ from services.anthropic_client import _EXTRACT_PROMPT, parse_entities
 
 # gemini-2.x는 신규 사용자/프로젝트에 더 이상 제공되지 않으므로(404 Not Found) 3.6-flash 이상 지원
 ALLOWED_CHAT_MODELS = {
+    "gemini-4-argon",
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
     "gemini-3.5-flash",

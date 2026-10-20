@@ -34,6 +34,7 @@ class Settings:
 
         self.ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:1420")
         self.EXTRACT_MODEL = os.getenv("EXTRACT_MODEL", "claude-haiku-4-5")
+        self.OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         self.VAULT_DIR.mkdir(parents=True, exist_ok=True)
 
 

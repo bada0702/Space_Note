@@ -34,7 +34,7 @@ def _get_default_model() -> str:
 
 def has_api_key() -> bool:
     model = _get_default_model()
-    if not model.startswith(("claude", "gemini")):
+    if ollama_client.is_ollama_model(model):
         return True  # Ollama는 로컬이므로 키가 필요 없음
     return anthropic_client.has_api_key() or gemini_client.has_api_key()
 
@@ -227,7 +227,7 @@ def clean_entities(entities: list[dict]) -> list[dict]:
 def extract_entities(content: str) -> list[dict]:
     model = _get_default_model()
     
-    if not model.startswith(("claude", "gemini")):
+    if ollama_client.is_ollama_model(model):
         raw = ollama_client.extract_entities(content, model)
     elif anthropic_client.has_api_key():
         try:
