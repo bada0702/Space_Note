@@ -21,3 +21,13 @@ vault/
 src-tauri/target/
 build/
 backend/.venv-build/
+
+# 로컬 노트 데이터 백업·실험용
+vault2/
+vault_old/
+vault2.tar
+
+# 임시 QA 스크립트·산출물
+qa_*.mjs
+code_artifact.html
+.fablize/
