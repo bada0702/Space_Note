@@ -106,3 +106,15 @@ def test_discoveries_for_note_include_ontology_links(client):
     assert hit["kind"] == "ontology"
     assert hit["relations"]
     assert hit["shared_count"] == 0
+
+
+def test_archived_note_relations_do_not_link_notes(client):
+    # 보관한 노트에서 나온 관계는 다른 노트 사이 항로를 만들지 않는다
+    a, b, arch = _note(client, "A"), _note(client, "B"), _note(client, "보관")
+    _store(a, [("FAISS", "instance")])
+    _store(b, [("벡터DB", "class")])
+    _store(arch, [("FAISS", "instance"), ("벡터DB", "class")], [("FAISS", "인스턴스이다", "벡터DB")])
+    from db import get_conn
+    with get_conn() as conn:
+        conn.execute("UPDATE notes SET is_archived = 1 WHERE id = ?", (arch,))
+    assert _key(a, b) not in _pairs()

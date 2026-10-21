@@ -63,7 +63,11 @@ def ontology_pairs(conn) -> dict[tuple[str, str], Pair]:
             pairs[(a, b)].add(SHARE_WEIGHT.get(kind, 0.5), rel)
 
     # 2. 관계 연결: X —p→ Y 에서 X를 가진 노트와 Y를 가진 노트를 잇는다
-    for r in conn.execute("SELECT DISTINCT subj_id, pred, obj_id FROM relations").fetchall():
+    # 보관한 노트에서 나온 관계는 쓰지 않는다
+    for r in conn.execute(
+        "SELECT DISTINCT r.subj_id, r.pred, r.obj_id FROM relations r "
+        "JOIN notes n ON n.id = r.note_id WHERE n.is_archived = 0"
+    ).fetchall():
         s, o = r["subj_id"], r["obj_id"]
         if s not in usable or o not in usable:
             continue

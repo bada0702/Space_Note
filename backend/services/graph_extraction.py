@@ -360,13 +360,26 @@ def store_graph(conn, note_id: str, graph: dict) -> None:
             "ON CONFLICT(note_id, concept_id) DO UPDATE SET weight = MAX(weight, excluded.weight)",
             (note_id, cid, item["weight"]),
         )
+    # 별칭으로 한 개념에 합쳐진 항목들의 kind가 엇갈리면 하나로 정한다 (class 우선)
+    kinds: dict[str, str] = {}
+    for item in graph["concepts"]:
+        cid = ids[item["norm"]]
+        if kinds.get(cid) != "class":
+            kinds[cid] = item["kind"]
+    for cid, kind in kinds.items():
+        conn.execute("UPDATE concepts SET kind = ? WHERE id = ?", (kind, cid))
     for r in graph["relations"]:
         s, o = ids.get(r["s"]), ids.get(r["o"])
         if not s or not o or s == o:
             continue
+        # parse_graph는 항목별 kind로 검사했으므로, 저장된 kind 기준으로 방향을 다시 맞춘다
+        fixed = _clean_relation({"id": s, "kind": kinds[s]}, r["p"], {"id": o, "kind": kinds[o]})
+        if fixed is None:
+            continue
+        sd, pred, od = fixed
         conn.execute(
             "INSERT OR IGNORE INTO relations (id, subj_id, pred, obj_id, note_id) VALUES (?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), s, r["p"], o, note_id),
+            (str(uuid.uuid4()), sd["id"], pred, od["id"], note_id),
         )
     gc_orphans(conn)
 

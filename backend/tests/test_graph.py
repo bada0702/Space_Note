@@ -387,3 +387,28 @@ def test_reextract_updates_kind_of_shared_concept(client):
     with get_conn() as conn:
         kind = conn.execute("SELECT kind FROM concepts WHERE name = 'Graph RAG'").fetchone()[0]
     assert kind == "class"
+
+
+def test_alias_merge_in_one_note_keeps_relation_directions_valid(client):
+    # 별칭으로 같은 개념에 합쳐진 두 항목의 kind가 다르면(class / instance) 하나로 정하고,
+    # 저장된 kind 기준으로 관계 방향을 다시 검사해야 한다
+    a = _note(client, "A", "a")
+    from db import get_conn
+    from services import graph_extraction as ge
+    raw = {
+        "nodes": [
+            {"name": "벡터DB", "kind": "class"},
+            {"name": "FAISS", "kind": "instance"},
+            {"name": "VectorDB", "kind": "instance", "aliases": ["벡터DB"]},
+        ],
+        "edges": [{"s": "FAISS", "p": "인스턴스이다", "o": "벡터DB"}],
+    }
+    with get_conn() as conn:
+        ge.store_graph(conn, a["id"], ge.parse_graph(json.dumps(raw, ensure_ascii=False)))
+        bad = conn.execute(
+            "SELECT COUNT(*) FROM relations r JOIN concepts s ON s.id = r.subj_id "
+            "JOIN concepts o ON o.id = r.obj_id WHERE r.pred = '인스턴스이다' "
+            "AND NOT (s.kind = 'instance' AND o.kind = 'class')").fetchone()[0]
+        kind = conn.execute("SELECT kind FROM concepts WHERE name = '벡터DB'").fetchone()[0]
+    assert bad == 0
+    assert kind == "class"   # 합쳐진 항목 중 class가 있으면 class
