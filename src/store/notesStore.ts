@@ -28,6 +28,12 @@ interface NotesState {
   setVaultPath: (path: string) => void
 }
 
+// 성도가 화면에 있을 때만 StarMapCanvas가 등록한다 — 상태가 아니라 콜백이라 바뀌어도 리렌더링되지 않는다
+let noteVanisher: ((id: string) => Promise<void>) | null = null
+export function setNoteVanisher(fn: ((id: string) => Promise<void>) | null) {
+  noteVanisher = fn
+}
+
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
   activeNote: null,
@@ -86,6 +92,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   deleteNote: async (id) => {
     await notesApi.delete(id)
+    // 성도가 떠 있으면 행성이 반짝이며 사라지는 연출이 끝난 뒤 목록에서 뺀다 (목록이 바뀌면 성도 장면을 다시 만든다)
+    if (noteVanisher) await noteVanisher(id)
     set(s => ({
       notes: s.notes.filter(n => n.id !== id),
       activeNote: s.activeNote?.id === id ? null : s.activeNote,

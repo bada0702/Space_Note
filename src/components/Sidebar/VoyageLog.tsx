@@ -145,14 +145,11 @@ export function VoyageLog() {
       : `선택한 노트 ${targets.length}개를 삭제할까요?\n${targets.slice(0, 5).map(n => `· ${n.title}`).join('\n')}${targets.length > 5 ? `\n… 외 ${targets.length - 5}개` : ''}`
     if (!confirm(msg)) return
     const failed: string[] = []
-    for (const n of targets) {
-      try {
-        await deleteNote(n.id)
-      } catch (err) {
-        console.error('note delete failed:', err)
-        failed.push(n.title)
-      }
-    }
+    // 동시에 지워야 성도에서 행성들이 함께 반짝이며 사라진다 (차례로 지우면 노트마다 연출을 기다림)
+    await Promise.all(targets.map(n => deleteNote(n.id).catch(err => {
+      console.error('note delete failed:', err)
+      failed.push(n.title)
+    })))
     setSelectedIds(new Set())
     anchorRef.current = null
     if (failed.length) alert(`삭제하지 못한 노트: ${failed.join(', ')}`)

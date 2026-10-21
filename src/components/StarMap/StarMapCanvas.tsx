@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { useCategoriesStore } from '../../store/categoriesStore'
-import { useNotesStore } from '../../store/notesStore'
+import { useNotesStore, setNoteVanisher } from '../../store/notesStore'
 import { constellationsApi } from '../../api/constellationsApi'
 import { searchApi } from '../../api/searchApi'
 import type { DiscoveryRoute, Note } from '../../types'
@@ -76,6 +76,11 @@ const dustCount = (n: number) => Math.min(60, Math.max(6, Math.round(n * 0.3)))
 
 // bloom — 별이 겹쳐 밝아진 은하 중심부만 번지도록 임계값을 높게 둔다
 const BLOOM = { strength: 0.35, radius: 0.2, threshold: 0.9 }
+// 별자리 보기의 별·별자리 선 — 밝기를 1 넘게 올려 bloom 임계값을 넘겨야 노랗게 번지며 빛난다
+const CONSTELLATION_COLOR = new THREE.Color('#ffd84a')
+const CONSTELLATION_GLOW = 1.6
+// 노트 삭제 연출: 점점 빨라지며 흰빛으로 반짝이다가(TWINKLE) 한 번 크게 번쩍이고 사라진다
+const VANISH = { twinkleMs: 1000, flashMs: 500, maxGlow: 4, flashGlow: 6 }
 
 // 은하 회전 곡선 근사 — 중심은 빠르고 외곽은 완만 (레퍼런스보다 훨씬 느리게: 외곽 약 6분/바퀴)
 const OMEGA_BASE = 0.02
@@ -899,8 +904,14 @@ export function StarMapCanvas() {
 
     const notePosAttr = new THREE.BufferAttribute(new Float32Array(orbits.length * 3), 3)
     notePosAttr.setUsage(THREE.DynamicDrawUsage)
+    // 별자리 보기에서는 보이는 노트가 모두 그 별자리의 별이므로 은하 색 대신 노란색으로 칠한다
+    // (팻말·이름표도 noteColors를 따른다). 버퍼에만 밝기를 곱해 별이 bloom으로 빛나게 한다.
+    const isConstellation = starMapFilter?.type === 'constellation'
+    const routeBaseColors = noteColors.slice() // 미개척 항로는 별자리 선이 아니므로 원래 은하 색을 유지
+    if (isConstellation) noteColors.fill(CONSTELLATION_COLOR)
+    const noteGlow = isConstellation ? CONSTELLATION_GLOW : 1
     const noteColAttr = new THREE.BufferAttribute(new Float32Array(orbits.length * 3), 3)
-    noteColors.forEach((c, i) => noteColAttr.setXYZ(i, c.r, c.g, c.b))
+    noteColors.forEach((c, i) => noteColAttr.setXYZ(i, c.r * noteGlow, c.g * noteGlow, c.b * noteGlow))
     const noteGeo = new THREE.BufferGeometry()
     noteGeo.setAttribute('position', notePosAttr)
     noteGeo.setAttribute('color', noteColAttr)
@@ -953,7 +964,7 @@ export function StarMapCanvas() {
     // 선의 양 끝은 매 프레임 공전하는 노트 위치를 따라간다.
     let constellationLines: THREE.LineSegments | null = null
     const constellationEdges: [number, number][] = []
-    if (starMapFilter?.type === 'constellation' && notePos.length >= 2) {
+    if (isConstellation && notePos.length >= 2) {
       const n = notePos.length
       const inTree = new Array(n).fill(false)
       const best = new Array(n).fill(Infinity)
@@ -973,7 +984,7 @@ export function StarMapCanvas() {
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(constellationEdges.length * 6), 3))
       constellationLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-        color: 0xbfd4ff, transparent: true, opacity: 0.6,
+        color: CONSTELLATION_COLOR.clone().multiplyScalar(CONSTELLATION_GLOW), transparent: true, opacity: 0.9,
         depthWrite: false, blending: THREE.AdditiveBlending,
       }))
       constellationLines.frustumCulled = false
@@ -1028,7 +1039,7 @@ export function StarMapCanvas() {
         const aIdx = noteIds.indexOf(route.note_a)
         const bIdx = noteIds.indexOf(route.note_b)
         if (aIdx < 0 || bIdx < 0) return // 필터로 숨겨진 노트
-        routeColors.push(noteColors[aIdx].clone().lerp(noteColors[bIdx], 0.5))
+        routeColors.push(routeBaseColors[aIdx].clone().lerp(routeBaseColors[bIdx], 0.5))
         lightPos.push(new THREE.Vector3())
         routeAlive.push(true)
         routeVisuals.push({ aIdx, bIdx, shared: route.shared_entities, t: Math.random(), dir: 1 })
@@ -1131,6 +1142,46 @@ export function StarMapCanvas() {
       for (let k = from * 3; k < (from + count) * 3; k++) arr[k] = on ? base[k] : 0
     }
     const noteBaseCol = (noteColAttr.array as Float32Array).slice()
+
+    // ── 삭제되는 행성 ── 스토어가 목록에서 빼기 전에 연출이 끝나길 기다린다
+    const vanishing = new Map<number, { start: number; resolve: () => void }>()
+    setNoteVanisher(id => new Promise<void>(resolve => {
+      const i = noteIds.indexOf(id)
+      if (i < 0 || !noteAlive[i]) return resolve() // 필터·타임라인으로 안 보이는 행성은 연출 없이 바로
+      vanishing.set(i, { start: performance.now(), resolve })
+    }))
+    function updateVanishing(now: number) {
+      if (!vanishing.size) return
+      vanishing.forEach((v, i) => {
+        const ms = now - v.start
+        let glow: number
+        let whiten: number
+        if (ms < VANISH.twinkleMs) {
+          const s = ms / 1000
+          // 주파수가 점점 올라가는 반짝임 (위상 = 2π(3s + 6s²))
+          const flicker = 0.5 + 0.5 * Math.sin(2 * Math.PI * (3 * s + 6 * s * s))
+          const p = ms / VANISH.twinkleMs
+          glow = 1 + (VANISH.maxGlow - 1) * p * flicker
+          whiten = p
+        } else {
+          const p = Math.min(1, (ms - VANISH.twinkleMs) / VANISH.flashMs)
+          glow = VANISH.flashGlow * (1 - p) * (1 - p)
+          whiten = 1
+        }
+        const k = i * 3
+        noteColAttr.setXYZ(
+          i,
+          (noteBaseCol[k] + (1 - noteBaseCol[k]) * whiten) * glow,
+          (noteBaseCol[k + 1] + (1 - noteBaseCol[k + 1]) * whiten) * glow,
+          (noteBaseCol[k + 2] + (1 - noteBaseCol[k + 2]) * whiten) * glow,
+        )
+        if (ms >= VANISH.twinkleMs + VANISH.flashMs) {
+          vanishing.delete(i)
+          v.resolve()
+        }
+      })
+      noteColAttr.needsUpdate = true
+    }
 
     function applyTimeline() {
       const t = timelineRef.current
@@ -1366,6 +1417,7 @@ export function StarMapCanvas() {
       hexMat.opacity = HEX_FADE.opacity * hexFade
 
       applyTimeline()
+      updateVanishing(performance.now())
 
       updateSigns(hexFade)
       camRight.setFromMatrixColumn(camera.matrixWorld, 0)
@@ -1401,6 +1453,8 @@ export function StarMapCanvas() {
     obs.observe(el)
 
     return () => {
+      setNoteVanisher(null)
+      vanishing.forEach(v => v.resolve()) // 연출 중에 성도를 떠나도 삭제는 마저 반영
       flyToRef.current = null
       routesCancelled = true
       cancelAnimationFrame(animId)
