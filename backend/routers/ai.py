@@ -19,6 +19,15 @@ RAG_MAX_KEYWORDS = 8
 GRAPH_WEIGHT = 0.6
 KEYWORD_WEIGHT = 0.4
 
+# 참고 노트가 있을 때만 붙이는 근거 지시 — 노트 우선, 노트 밖 내용은 따로 표시
+RAG_RULES = (
+    "[답변 규칙]\n"
+    "- 아래 참고 노트 중 질문과 관련된 노트의 내용을 우선 근거로 답한다. 관련 없는 노트는 무시한다.\n"
+    "- 노트에서 가져온 내용에는 출처 노트 제목을 (노트: 제목) 형식으로 밝힌다.\n"
+    "- 노트에 없는 내용을 덧붙일 때는 '노트 외 일반 지식'이라고 구분해 표시한다.\n"
+    "- 관련 노트가 없으면 노트에서 찾지 못했다고 먼저 말한 뒤 일반 지식으로 답한다."
+)
+
 SUMMARY_SYSTEM = (
     "너는 노트 정리 도우미다. 사용자가 준 노트를 핵심 내용 중심의 마크다운 문서로 다시 정리한다.\n"
     "- 노트가 AI와의 대화 기록이면 질문·답변 형식, 화자 표시(사용자:, AI:, You said 등), "
@@ -242,6 +251,8 @@ def _build_system(req: ChatRequest) -> tuple[str, list[dict]]:
                 f"# {n['title']}\n(선택 근거: {n['reason']})\n{n['excerpt']}" for n in notes
             )
             if ctx:
+                # 지시 없이 노트만 붙이면 경량 모델은 노트를 무시하고 일반 지식으로 답한다
+                parts.append(RAG_RULES)
                 parts.append("[참고 노트]\n" + ctx)
             sources = [{"id": n["id"], "title": n["title"], "path": n["reason"]} for n in notes]
 

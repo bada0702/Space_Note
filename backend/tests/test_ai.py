@@ -273,3 +273,25 @@ def test_summarize_reports_provider_error(client, monkeypatch):
 def test_summarize_empty_note_400(client):
     note = client.post("/notes", json={"title": "빈 노트", "content": "  "}, headers=AUTH).json()
     assert client.post(f"/ai/summarize/{note['id']}", headers=AUTH).status_code == 400
+
+
+def test_rag_instructs_model_to_ground_answer_in_notes(client, monkeypatch):
+    client.post("/notes", json={"title": "온톨로지 정리", "content": "온톨로지는 설계도"}, headers=AUTH)
+    system = _capture_system(client, monkeypatch, {
+        "messages": [{"role": "user", "content": "온톨로지의 정의"}],
+        "use_rag": True,
+    })
+    # 근거 지시가 노트 목록 앞에 있어야 모델이 일반 지식 대신 노트를 근거로 답한다
+    rules, ctx = system.split("[참고 노트]", 1)
+    assert "[답변 규칙]" in rules
+    assert "노트 외 일반 지식" in rules
+    assert "온톨로지 정리" in ctx
+
+
+def test_no_grounding_rules_without_rag(client, monkeypatch):
+    client.post("/notes", json={"title": "온톨로지 정리", "content": "온톨로지는 설계도"}, headers=AUTH)
+    system = _capture_system(client, monkeypatch, {
+        "messages": [{"role": "user", "content": "온톨로지의 정의"}],
+        "use_rag": False,
+    })
+    assert "[답변 규칙]" not in system
