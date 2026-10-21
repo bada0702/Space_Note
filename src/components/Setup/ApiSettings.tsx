@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { GraphSettings } from './GraphSettings'
 import { McpSettings } from './McpSettings'
+import { ResetSettings } from './ResetSettings'
 import { useAIStore } from '../../store/aiStore'
 import { useNotesStore } from '../../store/notesStore'
 import { aiApi } from '../../api/aiApi'
@@ -287,6 +288,8 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
           {saving ? '저장 중...' : saved ? '✓ 저장됨' : '저장'}
         </button>
         )}
+        {/* 저장 버튼과 헷갈리지 않게 일반 탭 맨 아래에 따로 둔다 */}
+        {tab === 'general' && <ResetSettings onDone={onClose} />}
       </div>
       </div>
     </div>
