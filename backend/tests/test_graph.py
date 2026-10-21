@@ -374,3 +374,16 @@ def test_retrieval_ignores_literals(client):
         notes = graph_retrieval.score_notes(conn, hits)
     assert {h.name for h in hits.values()} == {"FAISS"}       # 값 노드로 퍼지지 않음
     assert notes[a["id"]].concept.name == "FAISS"
+
+
+def test_reextract_updates_kind_of_shared_concept(client):
+    # 마이그레이션 근사값(instance)으로 저장된 공유 개념도 재추출 결과(class)로 바로잡혀야
+    # 이번 노트의 관계(하위클래스이다)가 방향 규칙에 맞게 저장된다
+    a = _note(client, "A", "a")
+    b = _note(client, "B", "b")
+    _store_onto(a["id"], [("Graph RAG", "instance")])
+    _store_onto(b["id"], [("Graph RAG", "class"), ("RAG", "class")], [("Graph RAG", "하위클래스이다", "RAG")])
+    from db import get_conn
+    with get_conn() as conn:
+        kind = conn.execute("SELECT kind FROM concepts WHERE name = 'Graph RAG'").fetchone()[0]
+    assert kind == "class"

@@ -309,6 +309,9 @@ def _resolve_concept(conn, item: dict, note_id: str) -> str:
                 break
     if row is not None:
         cid = row[0]
+        # 공유 개념의 kind는 마지막 분석을 따른다 — 마이그레이션 근사값이 재분석으로 바로잡히고,
+        # 이번 노트에서 kind 기준으로 검증한 관계가 저장된 노드와 어긋나지 않게 한다
+        conn.execute("UPDATE concepts SET kind = ? WHERE id = ?", (kind, cid))
     else:
         cid = str(uuid.uuid4())
         conn.execute(
