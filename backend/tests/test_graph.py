@@ -362,3 +362,15 @@ def test_model_ready_reports_missing_ollama_or_key(client, monkeypatch):
     assert "Google" in ge.model_ready()
     _set(google_api_key="k")
     assert ge.model_ready() is None
+
+
+def test_retrieval_ignores_literals(client):
+    from db import get_conn
+    from services import graph_retrieval
+    a = _note(client, "A", "FAISS 버전 정리")
+    _store_onto(a["id"], [("FAISS", "instance"), ("v1.8", "literal")], [("FAISS", "버전", "v1.8")])
+    with get_conn() as conn:
+        hits = graph_retrieval.expand(conn, graph_retrieval.match_seeds(conn, "FAISS"))
+        notes = graph_retrieval.score_notes(conn, hits)
+    assert {h.name for h in hits.values()} == {"FAISS"}       # 값 노드로 퍼지지 않음
+    assert notes[a["id"]].concept.name == "FAISS"

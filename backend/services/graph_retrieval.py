@@ -106,7 +106,8 @@ def expand(conn, seeds: dict[str, ConceptHit]) -> dict[str, ConceptHit]:
             f"SELECT r.subj_id AS s, r.pred AS p, r.obj_id AS o, COUNT(*) AS n, "
             f" cs.name AS s_name, co.name AS o_name "
             f"FROM relations r JOIN concepts cs ON cs.id = r.subj_id JOIN concepts co ON co.id = r.obj_id "
-            f"WHERE r.subj_id IN ({ph}) OR r.obj_id IN ({ph}) "
+            f"WHERE (r.subj_id IN ({ph}) OR r.obj_id IN ({ph})) "
+            f"AND cs.kind != 'literal' AND co.kind != 'literal' "  # 값 노드는 노트 안 정보일 뿐
             f"GROUP BY r.subj_id, r.pred, r.obj_id",
             (*frontier, *frontier),
         ).fetchall()
