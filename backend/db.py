@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS concepts (
   name TEXT NOT NULL,
   norm TEXT NOT NULL UNIQUE,
   type TEXT NOT NULL DEFAULT '개념',
+  kind TEXT NOT NULL DEFAULT 'instance',
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS concept_aliases (
@@ -102,7 +103,9 @@ CREATE TABLE IF NOT EXISTS settings (
   default_model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
   ollama_base_url TEXT NOT NULL DEFAULT 'http://127.0.0.1:11434',
   autology_path TEXT NOT NULL DEFAULT 'http://127.0.0.1:8000',
-  vault_dir TEXT NOT NULL DEFAULT ''
+  vault_dir TEXT NOT NULL DEFAULT '',
+  graph_model TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite',
+  ollama_custom_models TEXT NOT NULL DEFAULT '[]'
 );
 """
 
@@ -148,6 +151,13 @@ def init_db() -> None:
             conn.execute("ALTER TABLE settings ADD COLUMN autology_path TEXT NOT NULL DEFAULT 'http://127.0.0.1:8000'")
         if "vault_dir" not in settings_cols:
             conn.execute("ALTER TABLE settings ADD COLUMN vault_dir TEXT NOT NULL DEFAULT ''")
+        # 지식 그래프 추출 모델과 직접 추가한 Ollama 모델(JSON 배열)
+        if "graph_model" not in settings_cols:
+            conn.execute(
+                "ALTER TABLE settings ADD COLUMN graph_model TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite'"
+            )
+        if "ollama_custom_models" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN ollama_custom_models TEXT NOT NULL DEFAULT '[]'")
         # MCP 서버(외부 에이전트 연동) 설정 — 기본은 꺼짐, 쓰기 도구도 꺼짐
         if "mcp_enabled" not in settings_cols:
             conn.execute("ALTER TABLE settings ADD COLUMN mcp_enabled INTEGER NOT NULL DEFAULT 0")
@@ -166,9 +176,36 @@ def init_db() -> None:
             _resync_all_tags(conn)
             conn.execute("PRAGMA user_version = 1")
 
+        # 마이그레이션(user_version 2): 지식 그래프를 Class/Instance/Literal 온톨로지로
+        if "kind" not in {r[1] for r in conn.execute("PRAGMA table_info(concepts)")}:
+            conn.execute("ALTER TABLE concepts ADD COLUMN kind TEXT NOT NULL DEFAULT 'instance'")
+        if conn.execute("PRAGMA user_version").fetchone()[0] < 2:
+            _migrate_to_ontology(conn)
+            conn.execute("PRAGMA user_version = 2")
+
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate_to_ontology(conn: sqlite3.Connection) -> None:
+    """기존 개념·관계를 온톨로지 형식으로 근사 변환. 정확한 결과는 [AI 항로분석] 재추출로 얻는다."""
+    conn.execute("UPDATE concepts SET kind = CASE WHEN type = '개념' THEN 'class' ELSE 'instance' END")
+    # instance가 instance의 '일종'이면 목적어는 사실상 분류(class)다
+    conn.execute(
+        "UPDATE concepts SET kind = 'class' WHERE id IN ("
+        " SELECT r.obj_id FROM relations r JOIN concepts s ON s.id = r.subj_id "
+        " WHERE r.pred = '일종이다' AND s.kind = 'instance')"
+    )
+    conn.execute(
+        "UPDATE OR IGNORE relations SET pred = CASE "
+        " (SELECT kind FROM concepts WHERE id = relations.subj_id) "
+        " WHEN 'class' THEN '하위클래스이다' ELSE '인스턴스이다' END "
+        "WHERE pred = '일종이다'"
+    )
+    conn.execute("DELETE FROM relations WHERE pred = '일종이다'")  # UNIQUE 충돌로 남은 중복
+    # 다음 [AI 항로분석]에서 새 형식으로 다시 추출되도록 (그동안은 변환된 그래프를 그대로 쓴다)
+    conn.execute("UPDATE notes SET graph_hash = NULL")
 
 
 def _resync_all_tags(conn: sqlite3.Connection) -> None:

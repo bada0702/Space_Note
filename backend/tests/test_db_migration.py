@@ -98,3 +98,77 @@ def test_init_db_resyncs_noisy_tags_once(monkeypatch, tmp_path):
     conn = sqlite3.connect(settings.DB_PATH)
     assert sorted(r[0] for r in conn.execute("SELECT tag FROM tags")) == ["수동", "아이디어"]
     conn.close()
+
+
+def _legacy_graph_db(monkeypatch, tmp_path):
+    """kind 컬럼이 없던 user_version 1 시절의 지식 그래프 DB를 만든다."""
+    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "graph.db"))
+    from config import settings
+    settings.reload()
+    from db import init_db
+    init_db()
+    conn = sqlite3.connect(settings.DB_PATH)
+    if "kind" in {r[1] for r in conn.execute("PRAGMA table_info(concepts)")}:
+        conn.execute("ALTER TABLE concepts DROP COLUMN kind")
+    conn.execute("PRAGMA user_version = 1")
+    for cid, name, ctype in [("c1", "RAG", "기술"), ("c2", "검색기법", "개념"), ("c3", "FAISS", "도구"),
+                             ("c4", "벡터DB", "도구"), ("c5", "검색기법2", "개념")]:
+        conn.execute("INSERT INTO concepts (id, name, norm, type, created_at) VALUES (?,?,?,?, 'now')",
+                     (cid, name, name.lower(), ctype))
+    for rid, s, p, o in [("r1", "c1", "일종이다", "c2"), ("r2", "c2", "일종이다", "c5"),
+                         ("r3", "c3", "일종이다", "c4"), ("r4", "c1", "사용한다", "c3")]:
+        conn.execute("INSERT INTO relations (id, subj_id, pred, obj_id, note_id) VALUES (?,?,?,?, 'n1')",
+                     (rid, s, p, o))
+    conn.execute("INSERT INTO notes (id, path, title, created_at, modified_at, graph_hash) "
+                 "VALUES ('n1', '/p', 't', 'now', 'now', 'h')")
+    conn.commit()
+    conn.close()
+    return settings.DB_PATH
+
+
+def test_migration_v2_converts_concepts_to_ontology(monkeypatch, tmp_path):
+    path = _legacy_graph_db(monkeypatch, tmp_path)
+    from db import init_db
+    init_db()
+    conn = sqlite3.connect(path)
+    kinds = dict(conn.execute("SELECT name, kind FROM concepts WHERE name != '검색기법2'"))
+    preds = set(conn.execute(
+        "SELECT cs.name, r.pred, co.name FROM relations r "
+        "JOIN concepts cs ON cs.id = r.subj_id JOIN concepts co ON co.id = r.obj_id"))
+    graph_hash = conn.execute("SELECT graph_hash FROM notes WHERE id = 'n1'").fetchone()[0]
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    conn.close()
+    # instance → instance '일종이다'의 목적어(벡터DB)는 class로 승격
+    assert kinds == {"RAG": "instance", "검색기법": "class", "FAISS": "instance", "벡터DB": "class"}
+    assert preds == {("RAG", "인스턴스이다", "검색기법"), ("검색기법", "하위클래스이다", "검색기법2"),
+                     ("FAISS", "인스턴스이다", "벡터DB"), ("RAG", "사용한다", "FAISS")}
+    assert graph_hash is None
+    assert version == 2
+
+
+def test_migration_v2_runs_once(monkeypatch, tmp_path):
+    path = _legacy_graph_db(monkeypatch, tmp_path)
+    from db import init_db
+    init_db()
+    conn = sqlite3.connect(path)
+    conn.execute("UPDATE notes SET graph_hash = 'new'")
+    conn.commit()
+    conn.close()
+    init_db()
+    conn = sqlite3.connect(path)
+    assert conn.execute("SELECT graph_hash FROM notes").fetchone()[0] == "new"
+    conn.close()
+
+
+def test_settings_has_graph_model_columns(monkeypatch, tmp_path):
+    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "fresh.db"))
+    from config import settings
+    settings.reload()
+    from db import init_db
+    init_db()
+    conn = sqlite3.connect(settings.DB_PATH)
+    row = conn.execute("SELECT graph_model, ollama_custom_models FROM settings").fetchone()
+    conn.close()
+    assert row == ("gemini-3.1-flash-lite", "[]")
