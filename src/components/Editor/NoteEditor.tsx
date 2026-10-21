@@ -126,6 +126,8 @@ export function NoteEditor() {
             folding: false,
             lineNumbers: 'on',
             glyphMargin: false,
+            // 스크롤 시 제목 줄을 맨 위에 고정하는 기능 — 배경이 투명(유리 카드)이라 아래 본문과 글자가 겹쳐 보인다
+            stickyScroll: { enabled: false },
           }}
         />
       </div>
