@@ -42,6 +42,8 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [ollamaModels, setOllamaModels] = useState<{name: string}[] | null>(null)
+  const [customModels, setCustomModels] = useState<string[]>([])
+  const [newModel, setNewModel] = useState('')
   const [folderPickerHint, setFolderPickerHint] = useState(false)
   const [tab, setTab] = useState<SettingsTab>('general')
 
@@ -66,14 +68,41 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
           google_api_key: '',
           default_model: s.default_model,
           vault_dir: s.vault_dir ?? '',
+          ollama_base_url: s.ollama_base_url ?? '',
         })
+        setCustomModels(s.ollama_custom_models ?? [])
         refreshSavedKeys()
       }
     })
+    refreshOllama()
+  }, [])
+
+  const refreshOllama = () =>
     aiApi.getOllamaModels()
       .then(setOllamaModels)
       .catch(e => { console.error('Failed to fetch Ollama models', e); setOllamaModels([]) })
-  }, [])
+
+  // 서버 주소를 저장한 뒤 설치 목록을 다시 받아 연결을 확인한다
+  const checkOllama = async () => {
+    setOllamaModels(null)
+    await aiApi.patchSettings({ ollama_base_url: (form.ollama_base_url ?? '').trim() })
+    await refreshOllama()
+  }
+
+  // 직접 추가한 모델 목록은 바로 저장한다 (저장 버튼의 문자열 필드와 따로)
+  const saveCustomModels = async (next: string[]) => {
+    setCustomModels(next)
+    await aiApi.patchSettings({ ollama_custom_models: next })
+    await loadSettings()
+  }
+  const addCustomModel = () => {
+    const name = newModel.trim().replace(/^ollama:/, '')
+    if (!name || customModels.includes(name)) return
+    setNewModel('')
+    saveCustomModels([...customModels, name])
+  }
+  // 채팅 모델 목록의 Ollama 그룹 = 설치된 모델 ∪ 직접 추가한 모델
+  const ollamaNames = [...new Set([...(ollamaModels ?? []).map(m => m.name), ...customModels])]
 
   const setField = (k: keyof AISettings, v: string) =>
     setForm(f => ({ ...f, [k]: v }))
@@ -247,14 +276,14 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
                   ))}
                 </optgroup>
               ))}
-              {ollamaModels && ollamaModels.length > 0 && (
+              {ollamaNames.length > 0 && (
                 <optgroup label="Ollama (로컬)">
-                  {ollamaModels.map(m => (
-                    <option key={m.name} value={`ollama:${m.name}`}>{m.name}</option>
+                  {ollamaNames.map(name => (
+                    <option key={name} value={`ollama:${name}`}>{name}</option>
                   ))}
                 </optgroup>
               )}
-              {form.default_model && !MODEL_OPTIONS.find(m => m.value === form.default_model) && !ollamaModels?.find(m => `ollama:${m.name}` === form.default_model) && (
+              {form.default_model && !MODEL_OPTIONS.find(m => m.value === form.default_model) && !ollamaNames.find(name => `ollama:${name}` === form.default_model) && (
                 <option value={form.default_model}>{form.default_model} (Unknown)</option>
               )}
             </select>
@@ -262,9 +291,64 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
                 {ollamaModels.length > 0
                   ? `Ollama 로컬 모델 ${ollamaModels.length}개를 찾았습니다.`
-                  : 'Ollama 서버에 연결되지 않았거나 설치된 모델이 없습니다 — Ollama를 실행하고 모델을 받은 뒤(ollama pull) 이 화면을 다시 여세요. 서버 주소는 백엔드 환경변수 OLLAMA_BASE_URL로 바꿀 수 있습니다.'}
+                  : 'Ollama 서버에 연결되지 않았거나 설치된 모델이 없습니다 — 아래 서버 주소를 확인하고 [연결 확인]을 누르세요.'}
               </p>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="ollama_base_url" style={labelStyle}>Ollama 서버 주소</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                id="ollama_base_url"
+                type="text"
+                placeholder="http://127.0.0.1:11434"
+                value={form.ollama_base_url ?? ''}
+                onChange={e => setField('ollama_base_url', e.target.value)}
+                style={inputStyle}
+              />
+              <button type="button" className="sn-btn" onClick={checkOllama}>연결 확인</button>
+            </div>
+            {ollamaModels === null && (
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>연결 확인 중...</p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="ollama_new_model" style={labelStyle}>Ollama 모델 직접 추가</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                id="ollama_new_model"
+                type="text"
+                placeholder="예: llama3.1:8b"
+                value={newModel}
+                onChange={e => setNewModel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addCustomModel() }}
+                style={inputStyle}
+              />
+              <button type="button" className="sn-btn" onClick={addCustomModel}>추가</button>
+            </div>
+            {customModels.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                {customModels.map(name => (
+                  <span key={name} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '1px 4px 1px 8px',
+                    background: 'var(--bg-input)', borderRadius: 10, border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                  }}>
+                    {name}
+                    <button
+                      type="button"
+                      aria-label={`${name} 삭제`}
+                      onClick={() => saveCustomModels(customModels.filter(m => m !== name))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '0 2px' }}
+                    >✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
+              서버 목록에 아직 없는 모델도 채팅 모델과 지식 그래프 추출 모델로 고를 수 있게 합니다. 사용 전에 Ollama에서 받아 두어야 합니다(ollama pull).
+            </p>
           </div>
           </>)}
 

@@ -3,6 +3,14 @@ import { useSearchStore } from '../../store/searchStore'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { notesApi } from '../../api/notesApi'
+import { aiApi } from '../../api/aiApi'
+import { formatRelation } from '../../utils/ontology'
+
+// apiFetch 오류("API 400: {"detail": "..."}")에서 서버가 준 안내 문구를 꺼낸다
+function errorDetail(e: unknown): string {
+  const msg = String((e as Error)?.message ?? '')
+  try { return JSON.parse(msg.slice(msg.indexOf('{'))).detail ?? '' } catch { return '' }
+}
 
 export function DiscoveriesPanel() {
   const { discoveries, loading, loadDiscoveries, setPanel } = useSearchStore()
@@ -78,6 +86,35 @@ export function DiscoveriesPanel() {
     }
   }
 
+  // AI 항로분석: 온톨로지 추출은 백그라운드 작업자가 분당 몇 개씩 처리하므로 대기 개수로 진행을 보여 준다
+  const runAiAnalyze = async (call: () => Promise<{ queued: number }>) => {
+    setNotice('')
+    setAnalyzing(true)
+    try {
+      const { queued } = await call()
+      if (queued === 0) {
+        setNotice('새로 분석할 노트가 없습니다 — 모든 노트의 온톨로지가 최신입니다')
+        return
+      }
+      while (alive.current) {
+        const s = await aiApi.getGraphStatus()
+        if (s.pending === 0) {
+          await loadDiscoveries(activeNote?.id)
+          setNotice(s.failed > 0
+            ? `온톨로지 분석 완료 — ${s.failed}개 실패 (설정 › 지식 그래프에서 다시 시도)`
+            : '온톨로지 분석과 항로 연결이 완료되었습니다!')
+          return
+        }
+        setNotice(`온톨로지 분석 중: 대기 ${s.pending}개 · 약 ${s.eta_minutes}분 남음 — 패널을 닫아도 계속 분석합니다`)
+        await new Promise(r => setTimeout(r, 5000))
+      }
+    } catch (e) {
+      setNotice(errorDetail(e) || '분석 요청에 실패했습니다')
+    } finally {
+      if (alive.current) setAnalyzing(false)
+    }
+  }
+
   const catColor = (id: string | null) =>
     categories.find(c => c.id === id)?.color ?? '#666677'
 
@@ -117,7 +154,7 @@ export function DiscoveriesPanel() {
 
           {/* AI 항로분석 */}
           <button
-            onClick={() => runAnalyze(() => notesApi.analyzeAll())}
+            onClick={() => runAiAnalyze(() => notesApi.analyzeAll())}
             disabled={analyzing}
             style={{
               fontSize: 12, color: 'var(--text-primary)',
@@ -125,7 +162,7 @@ export function DiscoveriesPanel() {
               borderRadius: 4, padding: '3px 10px',
               cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
             }}
-            title="거대언어모델(LLM)을 사용하여 맥락을 분석하고 의미적으로 관련된 항로를 찾습니다."
+            title="LLM으로 노트를 Class·Instance·Literal 온톨로지로 분석하고, 개념 사이의 관계로 항로를 잇습니다."
           >
             ✦ AI 항로분석
           </button>
@@ -148,7 +185,7 @@ export function DiscoveriesPanel() {
 
               {/* 이 노트 AI 분석 */}
               <button
-                onClick={() => runAnalyze(() => notesApi.analyzeOne(activeNote.id))}
+                onClick={() => runAiAnalyze(() => notesApi.analyzeOne(activeNote.id))}
                 disabled={analyzing}
                 style={{
                   fontSize: 12, color: 'var(--text-secondary)',
@@ -222,10 +259,28 @@ export function DiscoveriesPanel() {
                 marginLeft: 'auto', fontSize: 12,
                 color: 'var(--accent-line)', fontWeight: 600,
               }}>
-                {d.shared_count}개 공통
+                {d.kind === 'ontology' ? `관계 ${d.relations.length}` : `${d.shared_count}개 공통`}
               </span>
             </div>
-            {d.shared_entities.length > 0 && (
+            {d.kind === 'ontology' ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
+                {d.relations.map(r => {
+                  const text = formatRelation(r)
+                  return (
+                    <span
+                      key={text}
+                      style={{
+                        fontSize: 12, padding: '1px 6px',
+                        background: 'var(--bg-input)', borderRadius: 10,
+                        color: '#7dd3fc', border: '1px solid var(--border)',
+                      }}
+                    >
+                      {text}
+                    </span>
+                  )
+                })}
+              </div>
+            ) : d.shared_entities.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
                 {d.shared_entities.map(ent => (
                   <span

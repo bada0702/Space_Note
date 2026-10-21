@@ -10,6 +10,7 @@ import { useNotesStore, setNoteVanisher } from '../../store/notesStore'
 import { constellationsApi } from '../../api/constellationsApi'
 import { searchApi } from '../../api/searchApi'
 import type { DiscoveryRoute, Note } from '../../types'
+import { formatRelation } from '../../utils/ontology'
 
 // ─────────────────────────────────────────────────────────────
 // 성도 — 나선 은하 스타일
@@ -40,7 +41,7 @@ interface NoteOrbit {
 interface RouteVisual {
   aIdx: number
   bIdx: number
-  shared: string[]
+  label: string // hover 문구 — 온톨로지 관계 경로 또는 공유 키워드
   t: number
   dir: number
 }
@@ -80,6 +81,9 @@ const BLOOM = { strength: 0.35, radius: 0.2, threshold: 0.9 }
 const CONSTELLATION_COLOR = new THREE.Color('#ffd84a')
 const CONSTELLATION_GLOW = 1.6
 // 노트 삭제 연출: 점점 빨라지며 흰빛으로 반짝이다가(TWINKLE) 한 번 크게 번쩍이고 사라진다
+// 온톨로지 항로 — 항로 재질은 불투명도 0.05에 가산 혼합이라 색을 ×4로 올려 약 0.2 밝기로 보이게 한다
+const ONTOLOGY_ROUTE_BASE = new THREE.Color('#7dd3fc')
+const ONTOLOGY_ROUTE_COLOR = ONTOLOGY_ROUTE_BASE.clone().multiplyScalar(4)
 const VANISH = { twinkleMs: 1000, flashMs: 500, maxGlow: 4, flashGlow: 6 }
 
 // 은하 회전 곡선 근사 — 중심은 빠르고 외곽은 완만 (레퍼런스보다 훨씬 느리게: 외곽 약 6분/바퀴)
@@ -1035,14 +1039,21 @@ export function StarMapCanvas() {
     searchApi.discoveryRoutes().then(routes => {
       if (routesCancelled) return
       const routeColors: THREE.Color[] = []
+      const routeLightColors: THREE.Color[] = [] // 빛 점은 불투명이라 밝기를 올리지 않은 색에서 계산
       routes.forEach((route: DiscoveryRoute) => {
         const aIdx = noteIds.indexOf(route.note_a)
         const bIdx = noteIds.indexOf(route.note_b)
         if (aIdx < 0 || bIdx < 0) return // 필터로 숨겨진 노트
-        routeColors.push(routeBaseColors[aIdx].clone().lerp(routeBaseColors[bIdx], 0.5))
+        const onto = route.kind === 'ontology'
+        const mixed = routeBaseColors[aIdx].clone().lerp(routeBaseColors[bIdx], 0.5)
+        routeColors.push(onto ? ONTOLOGY_ROUTE_COLOR : mixed)
+        routeLightColors.push(onto ? ONTOLOGY_ROUTE_BASE : mixed)
         lightPos.push(new THREE.Vector3())
         routeAlive.push(true)
-        routeVisuals.push({ aIdx, bIdx, shared: route.shared_entities, t: Math.random(), dir: 1 })
+        const label = onto
+          ? route.relations.map(formatRelation).join(' · ')
+          : `공유: ${route.shared_entities.join(', ')}`
+        routeVisuals.push({ aIdx, bIdx, label, t: Math.random(), dir: 1 })
       })
       if (!routeVisuals.length) return
       // 모든 항로를 LineSegments 하나로 — draw call 1회
@@ -1067,7 +1078,7 @@ export function StarMapCanvas() {
       // 빛: 항로 색을 흰빛 쪽으로 밝힌 점 하나
       const lightCol = new Float32Array(routeVisuals.length * 3)
       const c = new THREE.Color()
-      routeColors.forEach((rc, i) => {
+      routeLightColors.forEach((rc, i) => {
         c.copy(rc).lerp(white, 0.7)
         lightCol.set([c.r, c.g, c.b], i * 3)
       })
@@ -1325,7 +1336,7 @@ export function StarMapCanvas() {
       const si = pickNearest(lightPos, e, rect, routeAlive, 12)
       if (si >= 0) {
         canvas.style.cursor = 'default'
-        setTooltip({ title: `공유: ${routeVisuals[si].shared.join(', ')}`, x: e.clientX - rect.left, y: e.clientY - rect.top })
+        setTooltip({ title: routeVisuals[si].label, x: e.clientX - rect.left, y: e.clientY - rect.top })
         return
       }
       canvas.style.cursor = 'grab'

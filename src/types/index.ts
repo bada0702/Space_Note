@@ -96,6 +96,9 @@ export interface AISettings {
   google_api_key: string
   default_model: string
   vault_dir?: string
+  graph_model?: string            // 지식 그래프(온톨로지) 추출 모델 — gemini-* 또는 ollama:<이름>
+  ollama_base_url?: string
+  ollama_custom_models?: string[] // 설치 목록에 없어도 직접 추가한 Ollama 모델 이름
 }
 
 /** 외부 에이전트(aibot 등)용 MCP 서버 설정 */
@@ -119,6 +122,17 @@ export interface SearchResult {
   modified_at: string
 }
 
+/** 온톨로지 항로의 근거 — 노드 공유는 p = '공유', s = o */
+export interface RouteRelation {
+  s: string
+  s_kind: 'class' | 'instance'
+  p: string
+  o: string
+  o_kind: 'class' | 'instance'
+}
+
+export type RouteKind = 'ontology' | 'keyword'
+
 export interface Discovery {
   note_id: string
   title: string
@@ -126,6 +140,8 @@ export interface Discovery {
   shared_count: number
   shared_entities: string[]
   modified_at: string
+  kind: RouteKind
+  relations: RouteRelation[]
 }
 
 export interface DiscoveryRoute {
@@ -133,6 +149,8 @@ export interface DiscoveryRoute {
   note_b: string
   shared_entities: string[]
   confirmed: boolean
+  kind: RouteKind
+  relations: RouteRelation[]
 }
 
 export interface Entity {

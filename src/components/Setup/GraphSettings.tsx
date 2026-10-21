@@ -1,17 +1,40 @@
 import { useEffect, useState } from 'react'
 import { aiApi } from '../../api/aiApi'
+import { useAIStore } from '../../store/aiStore'
+import { MODEL_OPTIONS } from '../../constants/models'
 import type { GraphStatus } from '../../types'
+
+const DEFAULT_GRAPH_MODEL = 'gemini-3.1-flash-lite'
+const GEMINI_MODELS = MODEL_OPTIONS.filter(m => m.group === 'Google Gemini')
 
 /** 설정 화면의 '지식 그래프' 항목 — 분석 진행 상황과 일괄 분석/재시도. */
 export function GraphSettings() {
   const [status, setStatus] = useState<GraphStatus | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const { settings, loadSettings } = useAIStore()
+  const [ollamaNames, setOllamaNames] = useState<string[]>([])
+  const graphModel = settings?.graph_model || DEFAULT_GRAPH_MODEL
+  const modelLabel = graphModel.startsWith('ollama:')
+    ? `Ollama ${graphModel.slice('ollama:'.length)}`
+    : GEMINI_MODELS.find(m => m.value === graphModel)?.label ?? graphModel
 
   const refresh = () =>
     aiApi.getGraphStatus()
       .then(s => { setStatus(s); setError('') })
       .catch(() => setError('지식 그래프 상태를 불러오지 못했습니다. 백엔드가 실행 중인지 확인하세요.'))
+
+  useEffect(() => {
+    loadSettings()
+    aiApi.getOllamaModels().then(list => setOllamaNames(list.map(m => m.name))).catch(() => setOllamaNames([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 추출 모델은 고르는 즉시 저장 — 다음 분석부터 적용된다
+  const changeModel = async (value: string) => {
+    await aiApi.patchSettings({ graph_model: value })
+    await loadSettings()
+  }
+  const ollamaOptions = [...new Set([...ollamaNames, ...(settings?.ollama_custom_models ?? [])])]
 
   useEffect(() => {
     refresh()
@@ -30,7 +53,7 @@ export function GraphSettings() {
     const minutes = Math.ceil(status.total / status.rate_per_minute)
     const ok = confirm(
       `노트 ${status.total}개를 다시 분석합니다.\n` +
-      `약 ${minutes}분 걸리고 Gemini API를 사용합니다. 분석은 백그라운드에서 진행되며, 그동안 앱을 계속 쓸 수 있습니다.`
+      `약 ${minutes}분 걸리고 ${modelLabel} 모델을 사용합니다. 분석은 백그라운드에서 진행되며, 그동안 앱을 계속 쓸 수 있습니다.`
     )
     if (ok) run(aiApi.rebuildGraph)
   }
@@ -57,6 +80,31 @@ export function GraphSettings() {
         <p className="sn-graph-desc">분석 중 — 남은 시간 약 {status.eta_minutes}분</p>
       )}
       {error && <p role="alert" className="sn-graph-error">{error}</p>}
+
+      <label htmlFor="graph_model" className="sn-graph-head" style={{ marginTop: 12, display: 'block' }}>
+        추출 모델
+      </label>
+      <select
+        id="graph_model"
+        value={graphModel}
+        onChange={e => changeModel(e.target.value)}
+        style={{
+          marginTop: 6, width: '100%', padding: '6px 10px', borderRadius: 5, boxSizing: 'border-box',
+          background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', fontSize: 13,
+        }}
+      >
+        <optgroup label="Google Gemini">
+          {GEMINI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </optgroup>
+        {ollamaOptions.length > 0 && (
+          <optgroup label="Ollama (로컬)">
+            {ollamaOptions.map(name => <option key={name} value={`ollama:${name}`}>{name}</option>)}
+          </optgroup>
+        )}
+      </select>
+      <p className="sn-graph-desc">
+        노트를 Class·Instance·Literal 온톨로지로 뽑는 모델입니다. Ollama를 고르면 노트가 외부로 나가지 않습니다.
+      </p>
 
       <div className="sn-graph-actions">
         <button type="button" className="sn-btn" onClick={handleRebuild} disabled={busy || !status}>
