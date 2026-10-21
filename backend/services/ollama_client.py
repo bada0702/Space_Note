@@ -5,6 +5,7 @@ from typing import Iterator
 import httpx
 
 from config import settings
+from db import get_conn
 from services.anthropic_client import _EXTRACT_PROMPT, parse_entities
 
 # 채팅 모델 값은 'ollama:<이름>'이 정식 표기 — 'gpt-oss' 같은 로컬 모델이 클라우드 모델 접두사와 겹치지 않게 한다.
@@ -20,10 +21,34 @@ def model_name(model: str) -> str:
     return model.removeprefix(PREFIX)
 
 
+def base_url() -> str:
+    """설정 화면에서 지정한 서버 주소, 비어 있으면 환경변수 OLLAMA_BASE_URL."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT ollama_base_url FROM settings WHERE id = 1").fetchone()
+    url = (row["ollama_base_url"] if row else "") or settings.OLLAMA_BASE_URL
+    return url.rstrip("/")
+
+
+def chat_json(model: str, prompt: str) -> str:
+    """JSON 출력을 강제한 단발 요청 (지식 그래프 추출용). 응답 텍스트를 돌려준다."""
+    resp = httpx.post(
+        f"{base_url()}/api/chat",
+        json={
+            "model": model_name(model),
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "format": "json",
+        },
+        timeout=600.0,
+    )
+    resp.raise_for_status()
+    return resp.json().get("message", {}).get("content", "")
+
+
 def list_models() -> list[dict]:
     """설치된 모델 목록 (`ollama list` 상당). 서버 미기동/접속 불가면 빈 목록."""
     try:
-        resp = httpx.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=3)
+        resp = httpx.get(f"{base_url()}/api/tags", timeout=3)
         resp.raise_for_status()
     except httpx.HTTPError:
         return []
@@ -34,7 +59,7 @@ def extract_entities(content: str, model: str) -> list[dict]:
     if not content.strip():
         return []
     resp = httpx.post(
-        f"{settings.OLLAMA_BASE_URL}/api/chat",
+        f"{base_url()}/api/chat",
         json={
             "model": model_name(model),
             "messages": [{"role": "user", "content": _EXTRACT_PROMPT + content}],
@@ -54,7 +79,7 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     payload_messages += messages
     with httpx.stream(
         "POST",
-        f"{settings.OLLAMA_BASE_URL}/api/chat",
+        f"{base_url()}/api/chat",
         json={"model": model_name(model), "messages": payload_messages, "stream": True},
         timeout=httpx.Timeout(120.0, connect=5.0),
     ) as resp:

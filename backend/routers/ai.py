@@ -44,6 +44,7 @@ def _get_settings() -> dict:
         row = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
     d = dict(row)
     d.pop("id", None)
+    d["ollama_custom_models"] = json.loads(d.get("ollama_custom_models") or "[]")
     return d
 
 
@@ -60,6 +61,8 @@ def get_ollama_models():
 @router.patch("/ai/settings")
 def patch_settings(body: SettingsPatch):
     fields = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
+    if "ollama_custom_models" in fields:
+        fields["ollama_custom_models"] = json.dumps(fields["ollama_custom_models"] or [], ensure_ascii=False)
     with get_conn() as conn:
         if fields:
             sets = ", ".join(f"{k} = ?" for k in fields)

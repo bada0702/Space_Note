@@ -315,3 +315,50 @@ def test_chat_stream_sends_sources_first(client, monkeypatch):
     assert first["sources"][0]["id"] == rag["id"]
     assert first["sources"][0]["path"] == "개념 'RAG'"
     assert json.loads(lines[1]) == {"text": "답"}
+
+
+# ── 추출 모델 선택 ───────────────────────────────────────────
+
+def _set(**fields):
+    from db import get_conn
+    with get_conn() as conn:
+        for k, v in fields.items():
+            conn.execute(f"UPDATE settings SET {k} = ?", (v,))
+
+
+def test_call_model_uses_ollama_when_selected(client, monkeypatch):
+    from services import graph_extraction as ge
+    _set(graph_model="ollama:qwen3:8b", ollama_base_url="http://ollama.test:11434")
+    captured = {}
+
+    class Resp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"message": {"content": '{"nodes": [], "edges": []}'}}
+
+    def fake_post(url, json=None, **kw):
+        captured["url"], captured["json"] = url, json
+        return Resp()
+
+    monkeypatch.setattr(ge.ollama_client.httpx, "post", fake_post)
+    assert ge.call_model("노트 본문") == '{"nodes": [], "edges": []}'
+    assert captured["url"] == "http://ollama.test:11434/api/chat"
+    assert captured["json"]["format"] == "json"
+    assert captured["json"]["model"] == "qwen3:8b"
+    assert captured["json"]["stream"] is False
+    assert captured["json"]["messages"][0]["content"].endswith("노트 본문")
+
+
+def test_model_ready_reports_missing_ollama_or_key(client, monkeypatch):
+    from services import graph_extraction as ge
+    _set(graph_model="ollama:qwen3:8b")
+    monkeypatch.setattr(ge.ollama_client, "list_models", lambda: [])
+    assert "Ollama" in ge.model_ready()
+    monkeypatch.setattr(ge.ollama_client, "list_models", lambda: [{"name": "qwen3:8b"}])
+    assert ge.model_ready() is None
+
+    _set(graph_model="gemini-3.1-flash-lite", google_api_key="")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    assert "Google" in ge.model_ready()
+    _set(google_api_key="k")
+    assert ge.model_ready() is None

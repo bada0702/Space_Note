@@ -87,7 +87,9 @@ def test_ollama_list_models_unavailable(client, monkeypatch):
     # 서버가 안 떠 있으면(연결 거부) 오류 대신 빈 목록
     from services import ollama_client
 
-    monkeypatch.setattr(ollama_client.settings, "OLLAMA_BASE_URL", "http://127.0.0.1:9")
+    from db import get_conn
+    with get_conn() as conn:
+        conn.execute("UPDATE settings SET ollama_base_url = 'http://127.0.0.1:9'")
     assert ollama_client.list_models() == []
 
 
@@ -295,3 +297,22 @@ def test_no_grounding_rules_without_rag(client, monkeypatch):
         "use_rag": False,
     })
     assert "[답변 규칙]" not in system
+
+
+def test_settings_roundtrip_graph_and_ollama_fields(client):
+    r = client.patch("/ai/settings", json={
+        "graph_model": "ollama:qwen3:8b",
+        "ollama_base_url": "http://ollama.test:11434",
+        "ollama_custom_models": ["llama3.1:8b"],
+    }, headers=AUTH)
+    assert r.status_code == 200
+    got = client.get("/ai/settings", headers=AUTH).json()
+    assert got["graph_model"] == "ollama:qwen3:8b"
+    assert got["ollama_base_url"] == "http://ollama.test:11434"
+    assert got["ollama_custom_models"] == ["llama3.1:8b"]
+
+
+def test_ollama_uses_base_url_from_settings(client, monkeypatch):
+    from services import ollama_client
+    client.patch("/ai/settings", json={"ollama_base_url": "http://ollama.test:11434/"}, headers=AUTH)
+    assert ollama_client.base_url() == "http://ollama.test:11434"

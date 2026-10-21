@@ -40,6 +40,9 @@ class SettingsPatch(BaseModel):
     google_api_key: Optional[str] = None
     default_model: Optional[str] = None
     vault_dir: Optional[str] = None
+    graph_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    ollama_custom_models: Optional[list[str]] = None
 
 
 class ChatMessage(BaseModel):

@@ -13,12 +13,12 @@ from datetime import datetime, timezone
 import httpx
 
 from db import get_conn
-from services import gemini_client
+from services import gemini_client, ollama_client
 from services.textnorm import norm_name
 
 logger = logging.getLogger(__name__)
 
-# 토큰 소모가 적은 경량 모델로 추출
+# 기본 추출 모델 — 토큰 소모가 적은 경량 모델 (설정 화면에서 Ollama로 바꿀 수 있다)
 GRAPH_MODEL = "gemini-3.1-flash-lite"
 MAX_INPUT_CHARS = 40_000
 MAX_CONCEPTS = 15   # class + instance
@@ -88,8 +88,34 @@ def _now() -> str:
 
 # ── 모델 호출 ────────────────────────────────────────────────
 
+def graph_model() -> str:
+    with get_conn() as conn:
+        row = conn.execute("SELECT graph_model FROM settings WHERE id = 1").fetchone()
+    return (row["graph_model"] if row else "") or GRAPH_MODEL
+
+
+def model_ready() -> str | None:
+    """추출 모델을 쓸 수 없으면 사용자에게 보일 이유, 쓸 수 있으면 None."""
+    model = graph_model()
+    if ollama_client.is_ollama_model(model):
+        if not ollama_client.list_models():
+            return "Ollama 서버에 연결할 수 없습니다 (설정의 Ollama 주소를 확인하세요)"
+        return None
+    if not gemini_client.has_api_key():
+        return "Google API 키가 설정되지 않았습니다 (설정의 AI 모델에서 저장하세요)"
+    return None
+
+
 def call_model(content: str) -> str:
-    """Gemini에 추출 요청을 보내 응답 텍스트를 돌려준다. 혼잡/한도 오류는 백오프 재시도."""
+    """설정된 추출 모델(Gemini 또는 Ollama)에 요청해 응답 텍스트를 돌려준다."""
+    model = graph_model()
+    if ollama_client.is_ollama_model(model):
+        return ollama_client.chat_json(model, PROMPT + content[:MAX_INPUT_CHARS])
+    return _call_gemini(model, content)
+
+
+def _call_gemini(model: str, content: str) -> str:
+    """Gemini 추출 요청. 혼잡/한도 오류는 백오프 재시도."""
     key = gemini_client._api_key()
     if not key:
         raise ValueError("Google API 키가 설정되지 않았습니다")
@@ -103,7 +129,7 @@ def call_model(content: str) -> str:
             time.sleep(delay)
         try:
             resp = httpx.post(
-                f"{gemini_client._BASE}/{GRAPH_MODEL}:generateContent",
+                f"{gemini_client._BASE}/{model}:generateContent",
                 headers={"x-goog-api-key": key},
                 json=payload,
                 timeout=120,
