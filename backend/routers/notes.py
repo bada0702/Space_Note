@@ -10,7 +10,7 @@ from db import get_conn
 from models import ChatGPTImport, NoteCreate, NotePatch
 from services import chatgpt_share, gemini_share, vault
 from services import extraction
-from services import graph_extraction
+from services import graph_extraction, graph_worker
 from services.tagparse import extract_tags
 from services.textnorm import norm_name
 
@@ -110,33 +110,32 @@ def list_notes(category_id: Optional[str] = None, archived: bool = False):
     return [_row_to_note(r) for r in rows]
 
 
-def _require_api_key() -> None:
-    if not extraction.has_api_key():
-        raise HTTPException(
-            status_code=400,
-            detail="AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)",
-        )
+def _require_graph_model() -> None:
+    reason = graph_extraction.model_ready()
+    if reason:
+        raise HTTPException(status_code=400, detail=reason)
 
 
 @router.post("/notes/analyze")
-def analyze_all(bg: BackgroundTasks):
-    """내용이 있는 pending/failed/analyzed_py 노트 전체를 백그라운드로 재분석."""
-    _require_api_key()
+def analyze_all():
+    """AI 항로분석: 온톨로지가 아직 없거나 본문이 바뀐 노트를 지식 그래프 추출 대기열에 넣는다.
+
+    처리는 graph_worker가 분당 RATE_PER_MINUTE개씩 하고, 진행 상황은 GET /graph/status로 본다.
+    """
+    _require_graph_model()
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, content FROM notes "
-            "WHERE TRIM(COALESCE(content, '')) != '' "
-            "AND analysis_status IN ('pending', 'failed', 'analyzed_py') "
-            "AND is_archived = 0"
+            "SELECT id, content, graph_hash FROM notes "
+            "WHERE TRIM(COALESCE(content, '')) != '' AND is_archived = 0"
         ).fetchall()
-        for r in rows:
-            conn.execute(
-                "UPDATE notes SET analysis_status = 'pending' WHERE id = ?",
-                (r["id"],),
-            )
-    for r in rows:
-        bg.add_task(_run_extraction, r["id"], r["content"])
-    return {"queued": len(rows)}
+        targets = [
+            r["id"] for r in rows
+            if r["graph_hash"] != graph_extraction.content_hash(r["content"])
+        ]
+        for nid in targets:
+            conn.execute("UPDATE notes SET graph_status = 'pending' WHERE id = ?", (nid,))
+    graph_worker.start()
+    return {"queued": len(targets)}
 
 
 @router.post("/notes/analyze-python")
@@ -159,19 +158,17 @@ def analyze_all_python(bg: BackgroundTasks):
 
 
 @router.post("/notes/{nid}/analyze")
-def analyze_one(nid: str, bg: BackgroundTasks):
-    _require_api_key()
+def analyze_one(nid: str):
+    """이 노트만 본문이 그대로여도 다시 추출한다 (해시를 지워 강제)."""
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT id, content FROM notes WHERE id = ?", (nid,)
-        ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Note not found")
+        if conn.execute("SELECT 1 FROM notes WHERE id = ?", (nid,)).fetchone() is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+    _require_graph_model()
     with get_conn() as conn:
         conn.execute(
-            "UPDATE notes SET analysis_status = 'pending' WHERE id = ?", (nid,)
+            "UPDATE notes SET graph_status = 'pending', graph_hash = NULL WHERE id = ?", (nid,)
         )
-    bg.add_task(_run_extraction, nid, row["content"] or "")
+    graph_worker.start()
     return {"queued": 1}
 
 

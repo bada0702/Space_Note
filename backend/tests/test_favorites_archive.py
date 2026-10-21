@@ -69,8 +69,9 @@ def test_archive_excludes_from_analyze_queue(client, monkeypatch):
     monkeypatch.setattr(ac, "extract_entities", _raise)
     c = _create(client, "실패 노트", "내용 있음")
 
-    import services.extraction as extraction
-    monkeypatch.setattr(extraction, "has_api_key", lambda: True)
+    from services import graph_extraction, graph_worker
+    monkeypatch.setattr(graph_extraction, "model_ready", lambda: None)
+    monkeypatch.setattr(graph_worker, "start", lambda: None)
 
     client.patch(f"/notes/{c['id']}", json={"is_archived": True}, headers=AUTH)
     assert client.post("/notes/analyze", headers=AUTH).json()["queued"] == 0

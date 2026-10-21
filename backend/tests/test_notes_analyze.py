@@ -7,57 +7,70 @@ def _make_note(client, title="노트", content="Claude와 우주에 대한 메�
     return r.json()
 
 
-def test_analyze_all_without_key_returns_400(client):
-    r = client.post("/notes/analyze", headers=AUTH)
-    assert r.status_code == 400
-    assert "API 키" in r.json()["detail"]
-
-
-def test_analyze_all_queues_failed_and_pending_notes(client, monkeypatch):
+def _ready(monkeypatch):
+    """추출 모델 준비 완료 + 작업자 스레드는 띄우지 않음."""
     from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
-    monkeypatch.setattr(
-        notes_router.extraction, "extract_entities",
-        lambda content: [{"name": "Claude", "type": "개념"}],
-    )
-    n1 = _make_note(client, "a")          # 생성 시 추출 성공 → analyzed
-    _make_note(client, "빈노트", "")       # 내용 없음 → 큐잉 대상 아님
+    monkeypatch.setattr(notes_router.graph_extraction, "model_ready", lambda: None)
+    monkeypatch.setattr(notes_router.graph_worker, "start", lambda: None)
 
-    # n1을 failed로 되돌려 재분석 대상으로 만든다
+
+def _graph(nid):
     from db import get_conn
     with get_conn() as conn:
-        conn.execute("UPDATE notes SET analysis_status='failed' WHERE id=?", (n1["id"],))
-        conn.execute("DELETE FROM entities WHERE note_id=?", (n1["id"],))
+        r = conn.execute("SELECT graph_status, graph_hash FROM notes WHERE id = ?", (nid,)).fetchone()
+    return r["graph_status"], r["graph_hash"]
+
+
+def _set_graph(nid, status, digest):
+    from db import get_conn
+    with get_conn() as conn:
+        conn.execute("UPDATE notes SET graph_status = ?, graph_hash = ? WHERE id = ?", (status, digest, nid))
+
+
+def test_analyze_all_queues_only_changed_notes(client, monkeypatch):
+    from services.graph_extraction import content_hash
+    _ready(monkeypatch)
+    a = _make_note(client, "a", "본문 A")
+    b = _make_note(client, "b", "본문 B")
+    c = _make_note(client, "c", "본문 C")
+    _make_note(client, "빈노트", "")                      # 내용 없음 → 대상 아님
+    _set_graph(a["id"], "done", content_hash("본문 A"))   # 이미 새 형식으로 분석됨
+    _set_graph(b["id"], "done", None)                      # 마이그레이션으로 해시가 지워짐
+    _set_graph(c["id"], "done", "옛 해시")                 # 본문이 바뀜
 
     r = client.post("/notes/analyze", headers=AUTH)
     assert r.status_code == 200
-    assert r.json()["queued"] == 1
-
-    # TestClient는 응답 후 BackgroundTasks를 동기 실행 → 상태/엔티티 확인
-    got = client.get(f"/notes/{n1['id']}", headers=AUTH).json()
-    assert got["analysis_status"] == "analyzed"
-    ents = client.get(f"/entities/{n1['id']}", headers=AUTH).json()
-    assert [e["name"] for e in ents] == ["Claude"]
+    assert r.json()["queued"] == 2
+    assert _graph(a["id"]) == ("done", content_hash("본문 A"))
+    assert _graph(b["id"])[0] == "pending"
+    assert _graph(c["id"])[0] == "pending"
 
 
-def test_analyze_one(client, monkeypatch):
-    from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
-    monkeypatch.setattr(
-        notes_router.extraction, "extract_entities",
-        lambda content: [{"name": "우주", "type": "개념"}],
-    )
-    n = _make_note(client)
+def test_analyze_one_forces_reextract(client, monkeypatch):
+    from services.graph_extraction import content_hash
+    _ready(monkeypatch)
+    n = _make_note(client, "a", "본문")
+    _set_graph(n["id"], "done", content_hash("본문"))
     r = client.post(f"/notes/{n['id']}/analyze", headers=AUTH)
     assert r.status_code == 200
     assert r.json()["queued"] == 1
-    got = client.get(f"/notes/{n['id']}", headers=AUTH).json()
-    assert got["analysis_status"] == "analyzed"
+    assert _graph(n["id"]) == ("pending", None)
+
+
+def test_analyze_without_ready_model_returns_400_and_queues_nothing(client, monkeypatch):
+    from routers import notes as notes_router
+    monkeypatch.setattr(notes_router.graph_extraction, "model_ready", lambda: "Google API 키가 없습니다")
+    n = _make_note(client, "a", "본문")
+    _set_graph(n["id"], "done", None)
+    for url in ("/notes/analyze", f"/notes/{n['id']}/analyze"):
+        r = client.post(url, headers=AUTH)
+        assert r.status_code == 400
+        assert r.json()["detail"] == "Google API 키가 없습니다"
+    assert _graph(n["id"]) == ("done", None)
 
 
 def test_analyze_one_missing_note_404(client, monkeypatch):
-    from routers import notes as notes_router
-    monkeypatch.setattr(notes_router.extraction, "has_api_key", lambda: True)
+    _ready(monkeypatch)
     r = client.post("/notes/does-not-exist/analyze", headers=AUTH)
     assert r.status_code == 404
 
