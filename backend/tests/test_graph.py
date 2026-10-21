@@ -71,6 +71,79 @@ def test_parse_graph_rejects_broken_json():
 
 # ── DB 반영 ─────────────────────────────────────────────────
 
+def _store_onto(note_id, nodes, edges=()):
+    """새 온톨로지 형식으로 저장 (nodes: (name, kind), edges: (s, p, o))."""
+    from db import get_conn
+    from services import graph_extraction as ge
+    raw = {
+        "nodes": [{"name": n, "kind": k, "weight": 2} for n, k in nodes],
+        "edges": [{"s": s, "p": p, "o": o} for s, p, o in edges],
+    }
+    graph = ge.parse_graph(json.dumps(raw, ensure_ascii=False))
+    with get_conn() as conn:
+        ge.store_graph(conn, note_id, graph)
+
+
+def test_parse_graph_ontology_kinds_and_directions():
+    from services.graph_extraction import parse_graph
+    from services.textnorm import norm_name as n
+    raw = {
+        "nodes": [
+            {"name": "FAISS", "kind": "instance", "type": "도구"},
+            {"name": "벡터DB", "kind": "class", "type": "개념"},
+            {"name": "v1.8", "kind": "literal"},
+            {"name": "검색", "kind": "class"},
+        ],
+        "edges": [
+            {"s": "FAISS", "p": "인스턴스이다", "o": "벡터DB"},
+            {"s": "벡터DB", "p": "인스턴스이다", "o": "FAISS"},          # 뒤집힘 → 살려서 중복 제거
+            {"s": "벡터DB", "p": "하위클래스이다", "o": "검색"},
+            {"s": "FAISS", "p": "버전", "o": "v1.8"},                    # 데이터 속성
+            {"s": "v1.8", "p": "사용한다", "o": "FAISS"},                # literal 주어 → 버림
+            {"s": "FAISS", "p": "사용한다", "o": "v1.8"},                # 객체 속성 → literal: 버림
+            {"s": "FAISS", "p": "아주아주아주아주긴속성이름스물한자를넘는이름", "o": "v1.8"},  # 20자 초과 → 버림
+            {"s": "FAISS", "p": "하위클래스이다", "o": "검색"},          # instance는 subClassOf 불가 → 버림
+        ],
+    }
+    g = parse_graph(json.dumps(raw, ensure_ascii=False))
+    kinds = {c["norm"]: c["kind"] for c in g["concepts"]}
+    assert kinds == {n("FAISS"): "instance", n("벡터DB"): "class", n("v1.8"): "literal", n("검색"): "class"}
+    assert {(r["s"], r["p"], r["o"]) for r in g["relations"]} == {
+        (n("FAISS"), "인스턴스이다", n("벡터DB")),
+        (n("벡터DB"), "하위클래스이다", n("검색")),
+        (n("FAISS"), "버전", n("v1.8")),
+    }
+    assert len(g["relations"]) == 3
+
+
+def test_parse_graph_caps_literals():
+    from services.graph_extraction import parse_graph
+    raw = {"nodes": [{"name": "FAISS", "kind": "instance"}]
+           + [{"name": f"값{i}", "kind": "literal"} for i in range(12)], "edges": []}
+    g = parse_graph(json.dumps(raw, ensure_ascii=False))
+    assert sum(c["kind"] == "literal" for c in g["concepts"]) == 10
+    assert sum(c["kind"] != "literal" for c in g["concepts"]) == 1
+
+
+def test_store_literal_is_note_scoped(client):
+    a = _note(client, "A", "a")
+    b = _note(client, "B", "b")
+    _store_onto(a["id"], [("FAISS", "instance"), ("768", "literal")], [("FAISS", "차원", "768")])
+    _store_onto(b["id"], [("FAISS", "instance"), ("768", "literal")], [("FAISS", "차원", "768")])
+    from db import get_conn
+    with get_conn() as conn:
+        lits = {r[0] for r in conn.execute("SELECT norm FROM concepts WHERE kind = 'literal'")}
+        lit_aliases = conn.execute(
+            "SELECT COUNT(*) FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id "
+            "WHERE c.kind = 'literal'").fetchone()[0]
+        lit_type = {r[0] for r in conn.execute("SELECT type FROM concepts WHERE kind = 'literal'")}
+    assert lits == {f"lit:{a['id']}:768", f"lit:{b['id']}:768"}
+    assert lit_aliases == 0
+    assert lit_type == {"값"}
+    assert _count("SELECT COUNT(*) FROM concepts WHERE kind = 'instance'") == 1   # FAISS는 공유
+
+
+
 def test_store_merges_concepts_by_alias_and_replaces_per_note(client):
     a = _note(client, "A", "a")
     b = _note(client, "B", "b")
