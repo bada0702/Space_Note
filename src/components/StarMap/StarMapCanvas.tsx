@@ -11,6 +11,7 @@ import { constellationsApi } from '../../api/constellationsApi'
 import { searchApi } from '../../api/searchApi'
 import type { DiscoveryRoute, Note } from '../../types'
 import { formatRelation } from '../../utils/ontology'
+import { HEX_FADE, hexFadeFor, nearestPlanetDistance } from './nearFade'
 
 // ─────────────────────────────────────────────────────────────
 // 성도 — 나선 은하 스타일
@@ -63,8 +64,6 @@ const SPACE_BG = 0x060b16
 const MAX_NOTES_PER_CAT = 800
 const FAVORITE_LABEL_LIMIT = 40   // 이름표를 붙이는 기항지 상한 (스프라이트 수 억제)
 const PICK_RADIUS_PX = 11          // 점 클릭/hover 판정 반경
-// 행성 육각형은 확대했을 때만 — 카메라 거리 far 이상이면 숨기고 near 이하면 완전히 보인다
-const HEX_FADE = { near: 1500, far: 2200, opacity: 0.75 }
 const STAR_MAX_PX = 6
 // 노트 이름 팻말 — 마우스를 올린 행성 + 확대했을 때 카메라에 가까운 행성
 const SIGN = { max: 12, nearDist: 1400 }
@@ -1507,7 +1506,7 @@ export function StarMapCanvas() {
       // 검색한 행성은 공전 중이라 시선 중심이 계속 따라간다
       if (following && focusIdx >= 0) lookTarget.lerp(notePos[focusIdx], 0.08)
       updateCamera()
-      const hexFade = THREE.MathUtils.clamp((HEX_FADE.far - cam.r) / (HEX_FADE.far - HEX_FADE.near), 0, 1)
+      const hexFade = hexFadeFor(nearestPlanetDistance(camera.position, notePos, noteAlive))
       noteHexes.visible = hexFade > 0
       hexMat.opacity = HEX_FADE.opacity * hexFade
 
