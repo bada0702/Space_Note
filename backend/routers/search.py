@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter
 
 from db import get_conn
+from services.ontology_routes import ontology_pairs
 from services.textnorm import norm_name
 
 router = APIRouter()
@@ -56,9 +57,7 @@ def discoveries(note_id: Optional[str] = None):
             ).fetchall()
             norms_e = [r["norm"] for r in mine_e if r["norm"]]
             norms_t = [r["norm"] for r in mine_t if r["norm"]]
-            if not norms_e and not norms_t:
-                return []
-            rows = []
+            rows = []  # 키워드가 없어도 아래에서 온톨로지 연결은 찾는다
             if norms_e:
                 placeholders = ",".join("?" for _ in norms_e)
                 rows += conn.execute(
@@ -111,21 +110,45 @@ def discoveries(note_id: Optional[str] = None):
         # 같은 nkey(엔티티/태그 네임스페이스 + norm)는 하나로 취급, 표시는 최초 등장 이름으로
         d["_entities"].setdefault(r["nkey"], r["name"])
 
-    out = []
+    out = {}
     for d in agg.values():
         ents = sorted(list(set(d["_entities"].values())))
-        out.append(
-            {
-                "note_id": d["note_id"],
-                "title": d["title"],
-                "category_id": d["category_id"],
-                "shared_count": len(ents),
-                "shared_entities": ents,
-                "modified_at": d["modified_at"],
-            }
-        )
-    out.sort(key=lambda x: (x["shared_count"], x["modified_at"]), reverse=True)
-    return out
+        out[d["note_id"]] = {
+            "note_id": d["note_id"],
+            "title": d["title"],
+            "category_id": d["category_id"],
+            "shared_count": len(ents),
+            "shared_entities": ents,
+            "modified_at": d["modified_at"],
+            "kind": "keyword",
+            "relations": [],
+        }
+    scores: dict[str, float] = {}
+    if note_id:
+        # 온톨로지로 이어진 노트 — 키워드를 하나도 공유하지 않아도 포함
+        with get_conn() as conn:
+            for (a, b), pair in ontology_pairs(conn).items():
+                if note_id not in (a, b):
+                    continue
+                other = b if a == note_id else a
+                item = out.get(other)
+                if item is None:
+                    row = conn.execute(
+                        "SELECT title, category_id, modified_at FROM notes WHERE id = ?", (other,)
+                    ).fetchone()
+                    item = out[other] = {
+                        "note_id": other, "title": row["title"], "category_id": row["category_id"],
+                        "shared_count": 0, "shared_entities": [], "modified_at": row["modified_at"],
+                    }
+                item["kind"] = "ontology"
+                item["relations"] = pair.relations
+                scores[other] = pair.score
+    result = list(out.values())
+    result.sort(
+        key=lambda x: (scores.get(x["note_id"], 0.0), x["shared_count"], x["modified_at"]),
+        reverse=True,
+    )
+    return result
 
 
 @router.get("/entities/{note_id}")
@@ -194,6 +217,7 @@ def discovery_routes():
             "JOIN notes na ON na.id = r.note_a AND na.is_archived = 0 "
             "JOIN notes nb ON nb.id = r.note_b AND nb.is_archived = 0"
         ).fetchall()
+        onto = ontology_pairs(conn)
 
     norm_notes: dict[str, set[str]] = defaultdict(set)
     norm_display: dict[str, str] = {}
@@ -215,13 +239,17 @@ def discovery_routes():
             pairs[(a, b)].add(display)
 
     by_note: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    for key in pairs:
+    for key in set(pairs) | set(onto):
         by_note[key[0]].append(key)
         by_note[key[1]].append(key)
 
+    # 노트마다 온톨로지 항로(점수순)를 먼저, 남는 자리에 키워드 항로(공유 수순)
     keep: set[tuple[str, str]] = set()
     for note_id, keys in by_note.items():
-        keys.sort(key=lambda k: len(pairs[k]), reverse=True)
+        keys.sort(
+            key=lambda k: (k in onto, onto[k].score if k in onto else 0.0, len(pairs.get(k, ()))),
+            reverse=True,
+        )
         keep.update(keys[:_MAX_ROUTES_PER_NOTE])
 
     confirmed = {(r["note_a"], r["note_b"]) for r in crows}
@@ -234,6 +262,8 @@ def discovery_routes():
             "note_b": b,
             "shared_entities": sorted(pairs.get((a, b), set())),
             "confirmed": (a, b) in confirmed,
+            "kind": "ontology" if (a, b) in onto else "keyword",
+            "relations": onto[(a, b)].relations if (a, b) in onto else [],
         }
         for a, b in all_keys
     ]

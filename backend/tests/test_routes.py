@@ -29,7 +29,8 @@ def test_confirm_route_normalizes_and_flags(client, monkeypatch):
 
     routes = client.get("/discoveries/routes", headers=AUTH).json()
     assert routes == [
-        {"note_a": lo, "note_b": hi, "shared_entities": ["Docker"], "confirmed": True}
+        {"note_a": lo, "note_b": hi, "shared_entities": ["Docker"], "confirmed": True,
+         "kind": "keyword", "relations": []}
     ]
 
     # 해제
@@ -48,7 +49,8 @@ def test_confirmed_route_survives_without_discovery(client, monkeypatch):
     client.post("/routes", json={"note_a": lo, "note_b": hi}, headers=AUTH)
     routes = client.get("/discoveries/routes", headers=AUTH).json()
     assert routes == [
-        {"note_a": lo, "note_b": hi, "shared_entities": [], "confirmed": True}
+        {"note_a": lo, "note_b": hi, "shared_entities": [], "confirmed": True,
+         "kind": "keyword", "relations": []}
     ]
 
 
