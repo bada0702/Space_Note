@@ -82,6 +82,13 @@ const CONSTELLATION_COLOR = new THREE.Color('#ffd84a')
 const CONSTELLATION_GLOW = 1.6
 // 노트 삭제 연출: 점점 빨라지며 흰빛으로 반짝이다가(TWINKLE) 한 번 크게 번쩍이고 사라진다
 const VANISH = { twinkleMs: 1000, flashMs: 500, maxGlow: 4, flashGlow: 6 }
+// 노트 보관 연출: 행성 옆에 블랙홀이 열리고(open) 행성이 나선으로 빨려 들어간 뒤(spiral) 번쩍이며 닫힌다(close)
+const BLACKHOLE = {
+  openMs: 500, spiralMs: 1100, closeMs: 400,
+  distance: 0.06,  // 행성~블랙홀 거리 = 카메라~행성 거리 × 이 값 (줌과 관계없이 화면상 크기가 비슷하게)
+  turns: 3,        // 빨려 들어가며 도는 바퀴 수
+  tint: new THREE.Color(1, 0.45, 0.15),
+}
 
 // 은하 회전 곡선 근사 — 중심은 빠르고 외곽은 완만 (레퍼런스보다 훨씬 느리게: 외곽 약 6분/바퀴)
 const OMEGA_BASE = 0.02
@@ -240,6 +247,25 @@ const GALAXY_FRAG = /* glsl */ `
 `
 
 // 원형 소프트 파티클 — 별·노트 점 표현용
+// 블랙홀: 검은 사건의 지평선 + 주황빛 강착원반 고리 (NormalBlending으로 그려 검은색이 뒤를 가린다)
+function makeBlackHoleTexture(size = 128): THREE.Texture {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const c = size / 2
+  const grad = ctx.createRadialGradient(c, c, 0, c, c, c)
+  grad.addColorStop(0, 'rgba(0,0,0,1)')
+  grad.addColorStop(0.32, 'rgba(0,0,0,1)')
+  grad.addColorStop(0.4, 'rgba(255,190,110,1)')
+  grad.addColorStop(0.52, 'rgba(255,110,40,0.75)')
+  grad.addColorStop(0.75, 'rgba(180,50,20,0.25)')
+  grad.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, size, size)
+  return new THREE.CanvasTexture(canvas)
+}
+
 function makeRadialTexture(stops: [number, number][], size = 64): THREE.Texture {
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -1150,15 +1176,81 @@ export function StarMapCanvas() {
     const noteBaseCol = (noteColAttr.array as Float32Array).slice()
 
     // ── 삭제되는 행성 ── 스토어가 목록에서 빼기 전에 연출이 끝나길 기다린다
-    const vanishing = new Map<number, { start: number; resolve: () => void }>()
-    setNoteVanisher(id => new Promise<void>(resolve => {
+    interface BlackHole { sprite: THREE.Sprite; center: THREE.Vector3; right: THREE.Vector3; up: THREE.Vector3; r0: number }
+    const vanishing = new Map<number, { start: number; resolve: () => void; hole?: BlackHole }>()
+    const blackHoleTex = makeBlackHoleTexture()
+    disposables.push(blackHoleTex)
+    setNoteVanisher((id, effect) => new Promise<void>(resolve => {
       const i = noteIds.indexOf(id)
       if (i < 0 || !noteAlive[i]) return resolve() // 필터·타임라인으로 안 보이는 행성은 연출 없이 바로
-      vanishing.set(i, { start: performance.now(), resolve })
+      let hole: BlackHole | undefined
+      if (effect === 'blackhole') {
+        // 화면 기준 행성 오른쪽에 블랙홀을 연다 — 나선도 화면과 평행한 면에서 돈다
+        const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+        const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+        const r0 = camera.position.distanceTo(notePos[i]) * BLACKHOLE.distance
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: blackHoleTex, transparent: true, depthWrite: false }))
+        sprite.position.copy(notePos[i]).addScaledVector(right, r0)
+        sprite.scale.setScalar(0)
+        scene.add(sprite)
+        hole = { sprite, center: sprite.position.clone(), right, up, r0 }
+      }
+      vanishing.set(i, { start: performance.now(), resolve, hole })
     }))
+    function finishVanish(i: number) {
+      const v = vanishing.get(i)
+      if (!v) return
+      if (v.hole) {
+        scene.remove(v.hole.sprite)
+        v.hole.sprite.material.dispose()
+      }
+      vanishing.delete(i)
+      v.resolve()
+    }
+    // 블랙홀 연출 — 공전으로 정한 위치를 덮어써야 하므로 updateNotePositions 뒤, 버퍼 동기화 앞에서 부른다
+    function updateBlackHoles(now: number) {
+      vanishing.forEach((v, i) => {
+        const h = v.hole
+        if (!h) return
+        const ms = now - v.start
+        const size = h.r0 * 1.6
+        const k = i * 3
+        let bright = 1
+        let tint = 0
+        if (ms < BLACKHOLE.openMs) {
+          h.sprite.scale.setScalar(size * (ms / BLACKHOLE.openMs))
+          notePos[i].copy(h.center).addScaledVector(h.right, -h.r0)
+        } else if (ms < BLACKHOLE.openMs + BLACKHOLE.spiralMs) {
+          const p = (ms - BLACKHOLE.openMs) / BLACKHOLE.spiralMs
+          // 반지름은 점점 빠르게 줄고, 각속도는 점점 빨라진다
+          const r = h.r0 * Math.pow(1 - p, 1.5)
+          const th = Math.PI + BLACKHOLE.turns * 2 * Math.PI * p * p
+          notePos[i].copy(h.center).addScaledVector(h.right, Math.cos(th) * r).addScaledVector(h.up, Math.sin(th) * r)
+          h.sprite.scale.setScalar(size)
+          bright = 1 - p
+          tint = p
+        } else {
+          const q = Math.min(1, (ms - BLACKHOLE.openMs - BLACKHOLE.spiralMs) / BLACKHOLE.closeMs)
+          notePos[i].copy(h.center)
+          bright = 0
+          // 삼킨 순간 고리가 번쩍(밝기 1 초과 → bloom)였다가 오그라들며 닫힌다
+          h.sprite.material.color.setScalar(1 + 2.5 * Math.sin(Math.PI * q))
+          h.sprite.scale.setScalar(size * (1 + 0.3 * Math.sin(Math.PI * q)) * (1 - q))
+          if (q >= 1) finishVanish(i)
+        }
+        noteColAttr.setXYZ(
+          i,
+          (noteBaseCol[k] + (BLACKHOLE.tint.r - noteBaseCol[k]) * tint) * bright,
+          (noteBaseCol[k + 1] + (BLACKHOLE.tint.g - noteBaseCol[k + 1]) * tint) * bright,
+          (noteBaseCol[k + 2] + (BLACKHOLE.tint.b - noteBaseCol[k + 2]) * tint) * bright,
+        )
+        noteColAttr.needsUpdate = true
+      })
+    }
     function updateVanishing(now: number) {
       if (!vanishing.size) return
       vanishing.forEach((v, i) => {
+        if (v.hole) return // 블랙홀 연출은 updateBlackHoles가 맡는다
         const ms = now - v.start
         let glow: number
         let whiten: number
@@ -1181,10 +1273,7 @@ export function StarMapCanvas() {
           (noteBaseCol[k + 1] + (1 - noteBaseCol[k + 1]) * whiten) * glow,
           (noteBaseCol[k + 2] + (1 - noteBaseCol[k + 2]) * whiten) * glow,
         )
-        if (ms >= VANISH.twinkleMs + VANISH.flashMs) {
-          vanishing.delete(i)
-          v.resolve()
-        }
+        if (ms >= VANISH.twinkleMs + VANISH.flashMs) finishVanish(i)
       })
       noteColAttr.needsUpdate = true
     }
@@ -1429,6 +1518,7 @@ export function StarMapCanvas() {
       camRight.setFromMatrixColumn(camera.matrixWorld, 0)
       galaxies.forEach(g => g.title.position.copy(g.group.position).addScaledVector(camRight, g.R * 0.12))
       updateNotePositions()
+      updateBlackHoles(performance.now())
       syncNoteBuffers()
       updateConstellationLines()
       updateRoutes()
@@ -1460,7 +1550,7 @@ export function StarMapCanvas() {
 
     return () => {
       setNoteVanisher(null)
-      vanishing.forEach(v => v.resolve()) // 연출 중에 성도를 떠나도 삭제는 마저 반영
+      vanishing.forEach(v => v.resolve()) // 연출 중에 성도를 떠나도 삭제·보관은 마저 반영 (스프라이트는 아래 장면 정리에서 해제)
       flyToRef.current = null
       routesCancelled = true
       cancelAnimationFrame(animId)

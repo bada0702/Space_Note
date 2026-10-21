@@ -29,8 +29,10 @@ interface NotesState {
 }
 
 // 성도가 화면에 있을 때만 StarMapCanvas가 등록한다 — 상태가 아니라 콜백이라 바뀌어도 리렌더링되지 않는다
-let noteVanisher: ((id: string) => Promise<void>) | null = null
-export function setNoteVanisher(fn: ((id: string) => Promise<void>) | null) {
+// twinkle = 삭제(반짝이며 사라짐), blackhole = 보관(옆에 생긴 블랙홀로 빨려 들어감)
+export type VanishEffect = 'twinkle' | 'blackhole'
+let noteVanisher: ((id: string, effect: VanishEffect) => Promise<void>) | null = null
+export function setNoteVanisher(fn: ((id: string, effect: VanishEffect) => Promise<void>) | null) {
   noteVanisher = fn
 }
 
@@ -93,7 +95,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   deleteNote: async (id) => {
     await notesApi.delete(id)
     // 성도가 떠 있으면 행성이 반짝이며 사라지는 연출이 끝난 뒤 목록에서 뺀다 (목록이 바뀌면 성도 장면을 다시 만든다)
-    if (noteVanisher) await noteVanisher(id)
+    if (noteVanisher) await noteVanisher(id, 'twinkle')
     set(s => ({
       notes: s.notes.filter(n => n.id !== id),
       activeNote: s.activeNote?.id === id ? null : s.activeNote,
@@ -112,6 +114,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   archiveNote: async (id) => {
     const updated = await notesApi.update(id, { is_archived: true })
+    if (noteVanisher) await noteVanisher(id, 'blackhole') // 성도가 떠 있으면 블랙홀 연출 뒤에 목록에서 뺀다
     set(s => ({
       notes: s.notes.filter(n => n.id !== id),
       archivedNotes: [updated, ...s.archivedNotes],
