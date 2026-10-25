@@ -5,10 +5,12 @@
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 
@@ -29,11 +31,136 @@ MAX_DATA_PROPERTY_CHARS = 20
 # 온톨로지 노드 종류와 관계
 KINDS = ("class", "instance", "literal")
 STRUCT_PREDICATES = ("인스턴스이다", "하위클래스이다")  # instance→class, class→class
-OBJECT_PREDICATES = ("사용한다", "일부이다", "해결한다", "관련있다")
+BASE_PREDICATES = {
+    "사용한다": "s가 o를 사용",
+    "일부이다": "s는 o의 구성요소",
+    "해결한다": "s가 문제 o를 해결",
+    "관련있다": "위에 해당하지 않는 관련",
+}
 DEFAULT_PREDICATE = "관련있다"
-CONCEPT_TYPES = ("기술", "도구", "개념", "문제", "사람", "조직", "프로젝트")
+BASE_TYPES = ("기술", "도구", "개념", "문제", "사람", "조직", "프로젝트")
 DEFAULT_TYPE = "개념"
 LITERAL_TYPE = "값"
+
+# 도메인 온톨로지(유형·관계와 그 설명)가 추출 어휘를 넓힌다. 파일이 없으면 기본 어휘만 쓴다
+ONTOLOGY_PATH = Path(os.getenv(
+    "SPACENOTE_ONTOLOGY", Path(__file__).resolve().parent.parent / "ontology" / "general.json"
+))
+
+
+def _from_skos(scheme: dict) -> dict:
+    """SKOS ConceptScheme(JSON-LD)을 추출 코드가 쓰는 유형·관계 목록으로 바꾼다.
+
+    skos:Concept → 유형 (broader → parent, definition + example → description),
+    owl:ObjectProperty → 관계 (schema:domainIncludes/rangeIncludes → domain/range).
+    사전 밖의 IRI(코드의 기본 관계 등)는 sn: 뒤의 이름을 그대로 라벨로 쓴다.
+    """
+    label = {c["@id"]: c["prefLabel"] for c in scheme["concepts"]}
+    label |= {p["@id"]: p["label"] for p in scheme["properties"]}
+
+    def name(iri: str | None) -> str | None:
+        return iri and label.get(iri, iri.removeprefix("sn:"))
+
+    def description(c: dict) -> str:
+        examples = f"예: {', '.join(c['example'])}." if c.get("example") else ""
+        return " ".join(s for s in (c.get("definition", ""), examples) if s)
+
+    types = [
+        {"key": c["notation"], "name": c["prefLabel"], "description": description(c),
+         "parent": name(c.get("broader"))}
+        for c in scheme["concepts"]
+    ]
+    predicates = [
+        {"key": p["notation"], "name": p["label"], "description": p.get("definition", ""),
+         "domain": [name(i) for i in p["domainIncludes"]],
+         "range": [name(i) for i in p["rangeIncludes"]],
+         "transitive": "owl:TransitiveProperty" in p["@type"],
+         "symmetric": "owl:SymmetricProperty" in p["@type"],
+         "inverse_of": name(p.get("inverseOf"))}
+        for p in scheme["properties"]
+    ]
+    return {"name": scheme["prefLabel"], "source": scheme.get("source"),
+            "types": types, "predicates": predicates}
+
+
+def load_ontology(path: Path = ONTOLOGY_PATH) -> dict:
+    try:
+        return _from_skos(json.loads(Path(path).read_text(encoding="utf-8")))
+    except (OSError, ValueError, KeyError):
+        logger.warning("ontology not loaded from %s; using base vocabulary only", path)
+        return {"types": [], "predicates": []}
+
+
+ONTOLOGY = load_ontology()
+CONCEPT_TYPES = tuple(dict.fromkeys(
+    [*BASE_TYPES, *(t["name"] for t in ONTOLOGY["types"])]
+))
+# class/instance 사이의 관계 (구조 관계 인스턴스이다·하위클래스이다와 데이터 속성은 따로)
+OBJECT_PREDICATES = tuple(dict.fromkeys(
+    [*BASE_PREDICATES, *(p["name"] for p in ONTOLOGY["predicates"])]
+))
+
+
+_PARENT = {t["name"]: t.get("parent") for t in ONTOLOGY["types"]}
+_SIGNATURE = {
+    p["name"]: (set(p["domain"]), set(p["range"]))
+    for p in ONTOLOGY["predicates"] if p["domain"] and p["range"]
+}
+
+
+def _is_a(ctype: str, allowed: set[str]) -> bool:
+    """ctype이 allowed 중 하나이거나 그 하위 유형인가 (상위 유형을 따라 올라간다)."""
+    seen = set()
+    while ctype and ctype not in seen:
+        if ctype in allowed:
+            return True
+        seen.add(ctype)
+        ctype = _PARENT.get(ctype)
+    return False
+
+
+def fit_signature(pred: str, s: dict, o: dict) -> tuple[str, dict, dict]:
+    """관계의 주어·목적어 유형을 온톨로지 시그니처와 대조한다.
+
+    정방향이 맞으면 그대로, 역방향이 맞으면 주어·목적어를 바꾸고, 어느 쪽도 아니면
+    기본 관계로 낮춘다. 시그니처가 없는 관계(기본 어휘)는 검사하지 않는다.
+    """
+    sig = _SIGNATURE.get(pred)
+    if sig is None:
+        return pred, s, o
+    domain, range_ = sig
+    if _is_a(s["type"], domain) and _is_a(o["type"], range_):
+        return pred, s, o
+    if _is_a(o["type"], domain) and _is_a(s["type"], range_):
+        return pred, o, s
+    return DEFAULT_PREDICATE, s, o
+
+
+def predicate_strength(pred: str) -> float:
+    """관계가 노트 연결을 얼마나 잘 설명하는가 — 온톨로지 관계 > 기본 타입 관계 > 관련있다."""
+    if pred == DEFAULT_PREDICATE:
+        return 0.4
+    if pred in _SIGNATURE:
+        return 1.2
+    return 1.0
+
+
+def _type_lines() -> str:
+    described = {t["name"]: t.get("description") or "" for t in ONTOLOGY["types"]}
+    return "\n".join(
+        f"  - {name}: {described[name]}" if described.get(name) else f"  - {name}"
+        for name in CONCEPT_TYPES
+    )
+
+
+def _predicate_lines() -> str:
+    lines = [f"  - {name}: {desc}" for name, desc in BASE_PREDICATES.items()]
+    for p in ONTOLOGY["predicates"]:
+        sig = f" ({'|'.join(p['domain'])} → {'|'.join(p['range'])})" if p["domain"] and p["range"] else ""
+        desc = p.get("description") or (f"{p['inverse_of']}의 역관계" if p.get("inverse_of") else "")
+        lines.append(f"  - {p['name']}{sig}: {desc}" if desc else f"  - {p['name']}{sig}")
+    return "\n".join(lines)
+
 
 # 일반어는 개념으로 받지 않는다 (모델이 규칙을 어겨도 걸러냄)
 _GENERIC = {norm_name(w) for w in (
@@ -53,10 +180,11 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 
 노드 규칙:
 - class: 추상적인 분류·범주 (예: 벡터DB, LLM, 컨테이너 기술)
-- instance: 구체적인 대상 — 특정 기술·제품·도구·사람·조직·프로젝트 (예: FAISS, Ollama, Docker)
+- instance: 구체적인 대상 — 특정 기술·제품·사람·조직·장소·음식 등 (예: FAISS, Ollama, Docker, 제주도)
 - literal: 값 — 버전, 날짜, 수치, 크기 (예: v0.3, 2026-10, 768차원)
 - class와 instance는 합쳐 최대 {MAX_CONCEPTS}개, literal은 최대 {MAX_LITERALS}개.
-- type은 다음 중 하나: {", ".join(CONCEPT_TYPES)} (literal은 생략)
+- type은 아래 유형 중 설명에 가장 잘 맞는 하나 (literal은 생략). 더 구체적인 하위 유형이 맞으면 그것을 쓴다(예: 도구보다 데이터베이스):
+{_type_lines()}
 - weight: 3 = 노트의 중심 주제, 2 = 중요하게 다룸, 1 = 언급만 됨
 - aliases: 같은 대상을 가리키는 다른 표기(한글/영문, 약어, 풀네임). 없으면 빈 배열. literal은 빈 배열.
 - 소프트웨어·기술·제품 이름은 널리 쓰이는 공식 영문 표기를 name으로 쓴다(예: 도커 → Docker, 올라마 → Ollama).
@@ -65,8 +193,8 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 엣지 규칙 (최대 {MAX_RELATIONS}개, s와 o는 반드시 위 nodes의 name):
 - 인스턴스이다: instance → class (s는 o의 한 사례)
 - 하위클래스이다: class → class (s는 o의 하위 분류)
-- {", ".join(OBJECT_PREDICATES)}: class/instance 사이의 관계
-  (사용한다: s가 o를 사용 / 일부이다: s는 o의 구성요소 / 해결한다: s가 문제 o를 해결 / 관련있다: 그 밖의 관련)
+- class/instance 사이의 관계는 아래 중 하나. 괄호는 s 유형 → o 유형이며, 맞는 관계가 없으면 관련있다:
+{_predicate_lines()}
 - 데이터 속성: class/instance → literal. p는 속성 이름(예: 버전, 출시일, 차원 수), {MAX_DATA_PROPERTY_CHARS}자 이내.
 - 다른 설명 없이 JSON만 출력.
 
@@ -179,6 +307,17 @@ def _clean_relation(s: dict, p: str, o: dict) -> tuple[dict, str, dict] | None:
     return s, (p if p in OBJECT_PREDICATES else DEFAULT_PREDICATE), o
 
 
+def _fit_relation(s: dict, p: str, o: dict) -> tuple[dict, str, dict] | None:
+    """kind 방향 규칙을 맞춘 뒤, class/instance 사이 관계는 온톨로지 시그니처로 다시 맞춘다."""
+    fixed = _clean_relation(s, p, o)
+    if fixed is None:
+        return None
+    s, p, o = fixed
+    if p in OBJECT_PREDICATES and o["kind"] != "literal":
+        p, s, o = fit_signature(p, s, o)
+    return s, p, o
+
+
 def parse_graph(text: str) -> dict:
     """응답 텍스트 → {"concepts": [...], "relations": [...]} (검증·정리된 값).
 
@@ -259,7 +398,7 @@ def parse_graph(text: str) -> dict:
         o = lookup.get(norm_name(str(r.get("o") or "")))
         if not s or not o or s is o:
             continue
-        fixed = _clean_relation(s, str(r.get("p") or "").strip(), o)
+        fixed = _fit_relation(s, str(r.get("p") or "").strip(), o)
         if fixed is None:
             continue
         s, pred, o = fixed

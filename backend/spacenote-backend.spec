@@ -7,7 +7,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 a = Analysis(
     ['desktop_entry.py'],
     pathex=['.'],
-    datas=collect_data_files('kiwipiepy_model') + collect_data_files('kiwipiepy'),
+    # 추출 어휘(일반 온톨로지) — 없으면 기본 어휘로만 추출한다
+    datas=collect_data_files('kiwipiepy_model') + collect_data_files('kiwipiepy') + [('ontology/general.json', 'ontology')],
     # routers/services는 main.py에서 정적 import되지만, uvicorn은 문자열로 동적 import하는 모듈이 많다
     # kiwipiepy_model은 kiwipiepy 내부에서 동적 import되어 명시하지 않으면 .py가 빠진다
     hiddenimports=['kiwipiepy_model'] + collect_submodules('uvicorn') + collect_submodules('routers') + collect_submodules('services'),
