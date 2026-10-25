@@ -1,9 +1,9 @@
 {
  "@context": {
-  "skos": "http://www.w3.org/2004/02/skos/core#",
-  "owl": "http://www.w3.org/2002/07/owl#",
+  "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
   "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
-  "schema": "https://schema.org/",
+  "owl": "http://www.w3.org/2002/07/owl#",
+  "skos": "http://www.w3.org/2004/02/skos/core#",
   "dct": "http://purl.org/dc/terms/",
   "sn": "urn:spacenote:ontology:",
   "@language": "ko",
@@ -17,64 +17,50 @@
    "@id": "skos:notation",
    "@language": null
   },
-  "broader": {
-   "@id": "skos:broader",
+  "source": "dct:source",
+  "subClassOf": {
+   "@id": "rdfs:subClassOf",
    "@type": "@id"
   },
-  "hasTopConcept": {
-   "@id": "skos:hasTopConcept",
-   "@type": "@id",
-   "@container": "@set"
+  "domain": {
+   "@id": "rdfs:domain",
+   "@type": "@id"
   },
-  "concepts": {
-   "@reverse": "skos:inScheme",
-   "@container": "@set"
+  "range": {
+   "@id": "rdfs:range",
+   "@type": "@id"
   },
-  "label": "rdfs:label",
-  "source": "dct:source",
-  "domainIncludes": {
-   "@id": "schema:domainIncludes",
+  "unionOf": {
+   "@id": "owl:unionOf",
    "@type": "@id",
-   "@container": "@set"
-  },
-  "rangeIncludes": {
-   "@id": "schema:rangeIncludes",
-   "@type": "@id",
-   "@container": "@set"
+   "@container": "@list"
   },
   "inverseOf": {
    "@id": "owl:inverseOf",
    "@type": "@id"
   },
-  "properties": "@included"
+  "classes": {
+   "@reverse": "rdfs:isDefinedBy",
+   "@container": "@set"
+  },
+  "properties": {
+   "@reverse": "rdfs:isDefinedBy",
+   "@container": "@set"
+  },
+  "isDefinedBy": {
+   "@id": "rdfs:isDefinedBy",
+   "@type": "@id"
+  },
+  "baseProperties": "@included"
  },
  "@id": "sn:general",
- "@type": "skos:ConceptScheme",
+ "@type": "owl:Ontology",
  "prefLabel": "일반 노트 온톨로지 (일반·IT·생활)",
  "source": "spacenote general.json",
- "hasTopConcept": [
-  "sn:Concept",
-  "sn:Problem",
-  "sn:Person",
-  "sn:Organization",
-  "sn:Project",
-  "sn:Goal",
-  "sn:Place",
-  "sn:Event",
-  "sn:Document",
-  "sn:Content",
-  "sn:Activity",
-  "sn:Technology",
-  "sn:Tool",
-  "sn:Data",
-  "sn:Thing",
-  "sn:Food",
-  "sn:Finance"
- ],
- "concepts": [
+ "classes": [
   {
    "@id": "sn:Concept",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Concept",
    "prefLabel": "개념",
    "definition": "추상적인 아이디어·이론·원리·분류.",
@@ -86,14 +72,14 @@
   },
   {
    "@id": "sn:Problem",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Problem",
    "prefLabel": "문제",
    "definition": "해결해야 할 어려움·고민·장애."
   },
   {
    "@id": "sn:Error",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Error",
    "prefLabel": "오류",
    "definition": "버그·에러 메시지·시스템 장애.",
@@ -101,11 +87,11 @@
     "OOM",
     "404 오류"
    ],
-   "broader": "sn:Problem"
+   "subClassOf": "sn:Problem"
   },
   {
    "@id": "sn:Symptom",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Symptom",
    "prefLabel": "질병·증상",
    "definition": "몸이나 마음의 질병·증상.",
@@ -113,25 +99,25 @@
     "두통",
     "불면증"
    ],
-   "broader": "sn:Problem"
+   "subClassOf": "sn:Problem"
   },
   {
    "@id": "sn:Person",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Person",
    "prefLabel": "사람",
    "definition": "실존 인물이나 노트 속 특정 인물."
   },
   {
    "@id": "sn:Organization",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Organization",
    "prefLabel": "조직",
    "definition": "회사·기관·학교·커뮤니티."
   },
   {
    "@id": "sn:Project",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Project",
    "prefLabel": "프로젝트",
    "definition": "목표를 가진 일련의 작업.",
@@ -142,7 +128,7 @@
   },
   {
    "@id": "sn:Goal",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Goal",
    "prefLabel": "목표",
    "definition": "이루고 싶은 결과.",
@@ -153,7 +139,7 @@
   },
   {
    "@id": "sn:Place",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Place",
    "prefLabel": "장소",
    "definition": "지역·도시·가게·시설.",
@@ -164,7 +150,7 @@
   },
   {
    "@id": "sn:Event",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Event",
    "prefLabel": "사건",
    "definition": "특정 시점의 일·행사·회의·일정.",
@@ -175,7 +161,7 @@
   },
   {
    "@id": "sn:Document",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Document",
    "prefLabel": "문서",
    "definition": "책·논문·글·강의·공식 문서.",
@@ -186,21 +172,21 @@
   },
   {
    "@id": "sn:Content",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Content",
    "prefLabel": "콘텐츠",
    "definition": "영화·음악·게임·영상·팟캐스트."
   },
   {
    "@id": "sn:Activity",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Activity",
    "prefLabel": "활동",
    "definition": "수행하거나 반복하는 일·업무·취미."
   },
   {
    "@id": "sn:Exercise",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Exercise",
    "prefLabel": "운동",
    "definition": "몸을 쓰는 활동.",
@@ -208,11 +194,11 @@
     "러닝",
     "스쿼트"
    ],
-   "broader": "sn:Activity"
+   "subClassOf": "sn:Activity"
   },
   {
    "@id": "sn:Hobby",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Hobby",
    "prefLabel": "취미",
    "definition": "즐기려고 하는 활동.",
@@ -220,33 +206,33 @@
     "사진",
     "보드게임"
    ],
-   "broader": "sn:Activity"
+   "subClassOf": "sn:Activity"
   },
   {
    "@id": "sn:Trip",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Trip",
    "prefLabel": "여행",
    "definition": "어딘가로 떠나는 일.",
    "example": [
     "오사카 여행"
    ],
-   "broader": "sn:Activity"
+   "subClassOf": "sn:Activity"
   },
   {
    "@id": "sn:Routine",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Routine",
    "prefLabel": "루틴",
    "definition": "정해 두고 반복하는 습관.",
    "example": [
     "아침 루틴"
    ],
-   "broader": "sn:Activity"
+   "subClassOf": "sn:Activity"
   },
   {
    "@id": "sn:Technology",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Technology",
    "prefLabel": "기술",
    "definition": "기법·방법론·알고리즘·표준.",
@@ -257,29 +243,29 @@
   },
   {
    "@id": "sn:Language",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Language",
    "prefLabel": "프로그래밍 언어",
    "example": [
     "Python",
     "TypeScript"
    ],
-   "broader": "sn:Technology"
+   "subClassOf": "sn:Technology"
   },
   {
    "@id": "sn:Algorithm",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Algorithm",
    "prefLabel": "알고리즘",
    "example": [
     "BM25",
     "다익스트라"
    ],
-   "broader": "sn:Technology"
+   "subClassOf": "sn:Technology"
   },
   {
    "@id": "sn:Protocol",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Protocol",
    "prefLabel": "프로토콜",
    "definition": "통신 규약·표준 형식.",
@@ -287,11 +273,11 @@
     "HTTP",
     "MCP"
    ],
-   "broader": "sn:Technology"
+   "subClassOf": "sn:Technology"
   },
   {
    "@id": "sn:Architecture",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Architecture",
    "prefLabel": "아키텍처",
    "definition": "설계 방식·패턴.",
@@ -299,18 +285,18 @@
     "마이크로서비스",
     "MVC"
    ],
-   "broader": "sn:Technology"
+   "subClassOf": "sn:Technology"
   },
   {
    "@id": "sn:Tool",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Tool",
    "prefLabel": "도구",
    "definition": "소프트웨어·제품·서비스."
   },
   {
    "@id": "sn:Framework",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Framework",
    "prefLabel": "프레임워크·라이브러리",
    "example": [
@@ -318,11 +304,11 @@
     "LangChain",
     "FastAPI"
    ],
-   "broader": "sn:Tool"
+   "subClassOf": "sn:Tool"
   },
   {
    "@id": "sn:Database",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Database",
    "prefLabel": "데이터베이스",
    "definition": "데이터 저장소.",
@@ -331,11 +317,11 @@
     "FAISS",
     "PostgreSQL"
    ],
-   "broader": "sn:Tool"
+   "subClassOf": "sn:Tool"
   },
   {
    "@id": "sn:Platform",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Platform",
    "prefLabel": "플랫폼·서비스",
    "definition": "클라우드·SaaS·운영체제·API 서비스.",
@@ -344,11 +330,11 @@
     "Linux",
     "GitHub"
    ],
-   "broader": "sn:Tool"
+   "subClassOf": "sn:Tool"
   },
   {
    "@id": "sn:DevTool",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "DevTool",
    "prefLabel": "개발 도구",
    "definition": "IDE·CLI·빌드·배포 도구.",
@@ -357,11 +343,11 @@
     "Git",
     "VS Code"
    ],
-   "broader": "sn:Tool"
+   "subClassOf": "sn:Tool"
   },
   {
    "@id": "sn:AIModel",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "AIModel",
    "prefLabel": "AI 모델",
    "definition": "언어·이미지·임베딩 모델.",
@@ -369,11 +355,11 @@
     "Gemini",
     "Llama"
    ],
-   "broader": "sn:Tool"
+   "subClassOf": "sn:Tool"
   },
   {
    "@id": "sn:Data",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Data",
    "prefLabel": "데이터",
    "definition": "데이터셋·파일 형식·지표.",
@@ -384,14 +370,14 @@
   },
   {
    "@id": "sn:Thing",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Thing",
    "prefLabel": "물건",
    "definition": "생활용품·구매한 제품."
   },
   {
    "@id": "sn:Device",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Device",
    "prefLabel": "기기",
    "definition": "컴퓨터·스마트폰·가전 등 물리 장비.",
@@ -399,11 +385,11 @@
     "맥북",
     "공기청정기"
    ],
-   "broader": "sn:Thing"
+   "subClassOf": "sn:Thing"
   },
   {
    "@id": "sn:Food",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Food",
    "prefLabel": "음식",
    "definition": "요리·메뉴·음료.",
@@ -414,7 +400,7 @@
   },
   {
    "@id": "sn:Ingredient",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Ingredient",
    "prefLabel": "식재료",
    "definition": "요리에 쓰는 재료.",
@@ -422,11 +408,11 @@
     "두부",
     "대파"
    ],
-   "broader": "sn:Food"
+   "subClassOf": "sn:Food"
   },
   {
    "@id": "sn:Finance",
-   "@type": "skos:Concept",
+   "@type": "owl:Class",
    "notation": "Finance",
    "prefLabel": "금융",
    "definition": "예산·지출 항목·금융 상품·투자 자산.",
@@ -443,17 +429,23 @@
     "owl:ObjectProperty"
    ],
    "notation": "dependsOn",
-   "label": "의존한다",
+   "prefLabel": "의존한다",
    "definition": "s가 동작하려면 o가 필요하다.",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Technology",
-    "sn:Project"
-   ],
-   "rangeIncludes": [
-    "sn:Tool",
-    "sn:Technology"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology",
+     "sn:Project"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology"
+    ]
+   }
   },
   {
    "@id": "sn:implements",
@@ -461,14 +453,10 @@
     "owl:ObjectProperty"
    ],
    "notation": "implements",
-   "label": "구현한다",
+   "prefLabel": "구현한다",
    "definition": "도구 s는 기술·표준 o를 구현한 것이다.",
-   "domainIncludes": [
-    "sn:Tool"
-   ],
-   "rangeIncludes": [
-    "sn:Technology"
-   ]
+   "domain": "sn:Tool",
+   "range": "sn:Technology"
   },
   {
    "@id": "sn:implementedBy",
@@ -476,13 +464,9 @@
     "owl:ObjectProperty"
    ],
    "notation": "implementedBy",
-   "label": "구현체",
-   "domainIncludes": [
-    "sn:Technology"
-   ],
-   "rangeIncludes": [
-    "sn:Tool"
-   ],
+   "prefLabel": "구현체",
+   "domain": "sn:Technology",
+   "range": "sn:Tool",
    "inverseOf": "sn:implements"
   },
   {
@@ -491,15 +475,16 @@
     "owl:ObjectProperty"
    ],
    "notation": "writtenIn",
-   "label": "작성 언어",
+   "prefLabel": "작성 언어",
    "definition": "s는 언어 o로 작성되었다.",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Project"
-   ],
-   "rangeIncludes": [
-    "sn:Language"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Project"
+    ]
+   },
+   "range": "sn:Language"
   },
   {
    "@id": "sn:runsOn",
@@ -507,16 +492,22 @@
     "owl:ObjectProperty"
    ],
    "notation": "runsOn",
-   "label": "실행 환경",
+   "prefLabel": "실행 환경",
    "definition": "s는 o 위에서 실행된다.",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Project"
-   ],
-   "rangeIncludes": [
-    "sn:Platform",
-    "sn:Device"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Project"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Platform",
+     "sn:Device"
+    ]
+   }
   },
   {
    "@id": "sn:stores",
@@ -524,15 +515,16 @@
     "owl:ObjectProperty"
    ],
    "notation": "stores",
-   "label": "저장한다",
+   "prefLabel": "저장한다",
    "definition": "s가 데이터 o를 저장·관리한다.",
-   "domainIncludes": [
-    "sn:Database",
-    "sn:Tool"
-   ],
-   "rangeIncludes": [
-    "sn:Data"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Database",
+     "sn:Tool"
+    ]
+   },
+   "range": "sn:Data"
   },
   {
    "@id": "sn:integratesWith",
@@ -541,14 +533,10 @@
     "owl:SymmetricProperty"
    ],
    "notation": "integratesWith",
-   "label": "연동한다",
+   "prefLabel": "연동한다",
    "definition": "두 도구가 서로 연동·통합된다.",
-   "domainIncludes": [
-    "sn:Tool"
-   ],
-   "rangeIncludes": [
-    "sn:Tool"
-   ]
+   "domain": "sn:Tool",
+   "range": "sn:Tool"
   },
   {
    "@id": "sn:alternativeTo",
@@ -557,16 +545,22 @@
     "owl:SymmetricProperty"
    ],
    "notation": "alternativeTo",
-   "label": "대안이다",
+   "prefLabel": "대안이다",
    "definition": "s와 o는 같은 목적에 서로 대신 쓸 수 있다.",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Technology"
-   ],
-   "rangeIncludes": [
-    "sn:Tool",
-    "sn:Technology"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology"
+    ]
+   }
   },
   {
    "@id": "sn:replaces",
@@ -574,16 +568,22 @@
     "owl:ObjectProperty"
    ],
    "notation": "replaces",
-   "label": "대체한다",
+   "prefLabel": "대체한다",
    "definition": "s가 예전의 o를 대신하게 되었다.",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Technology"
-   ],
-   "rangeIncludes": [
-    "sn:Tool",
-    "sn:Technology"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology"
+    ]
+   }
   },
   {
    "@id": "sn:developed",
@@ -591,17 +591,23 @@
     "owl:ObjectProperty"
    ],
    "notation": "developed",
-   "label": "개발했다",
+   "prefLabel": "개발했다",
    "definition": "사람·조직 s가 o를 만들었다.",
-   "domainIncludes": [
-    "sn:Person",
-    "sn:Organization"
-   ],
-   "rangeIncludes": [
-    "sn:Tool",
-    "sn:Technology",
-    "sn:Project"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Person",
+     "sn:Organization"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology",
+     "sn:Project"
+    ]
+   }
   },
   {
    "@id": "sn:developedBy",
@@ -609,16 +615,22 @@
     "owl:ObjectProperty"
    ],
    "notation": "developedBy",
-   "label": "개발 주체",
-   "domainIncludes": [
-    "sn:Tool",
-    "sn:Technology",
-    "sn:Project"
-   ],
-   "rangeIncludes": [
-    "sn:Person",
-    "sn:Organization"
-   ],
+   "prefLabel": "개발 주체",
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Tool",
+     "sn:Technology",
+     "sn:Project"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Person",
+     "sn:Organization"
+    ]
+   },
    "inverseOf": "sn:developed"
   },
   {
@@ -627,14 +639,10 @@
     "owl:ObjectProperty"
    ],
    "notation": "memberOf",
-   "label": "소속",
+   "prefLabel": "소속",
    "definition": "사람 s는 조직 o에 속한다.",
-   "domainIncludes": [
-    "sn:Person"
-   ],
-   "rangeIncludes": [
-    "sn:Organization"
-   ]
+   "domain": "sn:Person",
+   "range": "sn:Organization"
   },
   {
    "@id": "sn:participatesIn",
@@ -642,17 +650,23 @@
     "owl:ObjectProperty"
    ],
    "notation": "participatesIn",
-   "label": "참여한다",
+   "prefLabel": "참여한다",
    "definition": "s가 o에 참여한다.",
-   "domainIncludes": [
-    "sn:Person",
-    "sn:Organization"
-   ],
-   "rangeIncludes": [
-    "sn:Project",
-    "sn:Event",
-    "sn:Activity"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Person",
+     "sn:Organization"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Project",
+     "sn:Event",
+     "sn:Activity"
+    ]
+   }
   },
   {
    "@id": "sn:occursAt",
@@ -660,15 +674,16 @@
     "owl:ObjectProperty"
    ],
    "notation": "occursAt",
-   "label": "발생 장소",
+   "prefLabel": "발생 장소",
    "definition": "s가 장소 o에서 일어난다.",
-   "domainIncludes": [
-    "sn:Event",
-    "sn:Activity"
-   ],
-   "rangeIncludes": [
-    "sn:Place"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Event",
+     "sn:Activity"
+    ]
+   },
+   "range": "sn:Place"
   },
   {
    "@id": "sn:locatedIn",
@@ -677,15 +692,16 @@
     "owl:TransitiveProperty"
    ],
    "notation": "locatedIn",
-   "label": "위치한다",
+   "prefLabel": "위치한다",
    "definition": "s는 장소 o 안에 있다.",
-   "domainIncludes": [
-    "sn:Place",
-    "sn:Organization"
-   ],
-   "rangeIncludes": [
-    "sn:Place"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Place",
+     "sn:Organization"
+    ]
+   },
+   "range": "sn:Place"
   },
   {
    "@id": "sn:precedes",
@@ -694,16 +710,22 @@
     "owl:TransitiveProperty"
    ],
    "notation": "precedes",
-   "label": "선행한다",
+   "prefLabel": "선행한다",
    "definition": "s 다음에 o가 이어진다.",
-   "domainIncludes": [
-    "sn:Event",
-    "sn:Activity"
-   ],
-   "rangeIncludes": [
-    "sn:Event",
-    "sn:Activity"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Event",
+     "sn:Activity"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Event",
+     "sn:Activity"
+    ]
+   }
   },
   {
    "@id": "sn:authorOf",
@@ -711,16 +733,22 @@
     "owl:ObjectProperty"
    ],
    "notation": "authorOf",
-   "label": "저자",
+   "prefLabel": "저자",
    "definition": "s를 쓰거나 만든 이가 o이다.",
-   "domainIncludes": [
-    "sn:Document",
-    "sn:Content"
-   ],
-   "rangeIncludes": [
-    "sn:Person",
-    "sn:Organization"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Document",
+     "sn:Content"
+    ]
+   },
+   "range": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Person",
+     "sn:Organization"
+    ]
+   }
   },
   {
    "@id": "sn:aims",
@@ -728,16 +756,17 @@
     "owl:ObjectProperty"
    ],
    "notation": "aims",
-   "label": "목표로 한다",
+   "prefLabel": "목표로 한다",
    "definition": "s가 o를 이루려 한다.",
-   "domainIncludes": [
-    "sn:Person",
-    "sn:Project",
-    "sn:Activity"
-   ],
-   "rangeIncludes": [
-    "sn:Goal"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Person",
+     "sn:Project",
+     "sn:Activity"
+    ]
+   },
+   "range": "sn:Goal"
   },
   {
    "@id": "sn:causes",
@@ -745,19 +774,20 @@
     "owl:ObjectProperty"
    ],
    "notation": "causes",
-   "label": "원인이다",
+   "prefLabel": "원인이다",
    "definition": "s 때문에 문제 o가 생긴다.",
-   "domainIncludes": [
-    "sn:Concept",
-    "sn:Technology",
-    "sn:Tool",
-    "sn:Activity",
-    "sn:Food",
-    "sn:Problem"
-   ],
-   "rangeIncludes": [
-    "sn:Problem"
-   ]
+   "domain": {
+    "@type": "owl:Class",
+    "unionOf": [
+     "sn:Concept",
+     "sn:Technology",
+     "sn:Tool",
+     "sn:Activity",
+     "sn:Food",
+     "sn:Problem"
+    ]
+   },
+   "range": "sn:Problem"
   },
   {
    "@id": "sn:ingredientOf",
@@ -765,14 +795,10 @@
     "owl:ObjectProperty"
    ],
    "notation": "ingredientOf",
-   "label": "재료",
+   "prefLabel": "재료",
    "definition": "음식 s에 식재료 o가 들어간다.",
-   "domainIncludes": [
-    "sn:Food"
-   ],
-   "rangeIncludes": [
-    "sn:Ingredient"
-   ]
+   "domain": "sn:Food",
+   "range": "sn:Ingredient"
   },
   {
    "@id": "sn:contains",
@@ -780,11 +806,62 @@
     "owl:ObjectProperty"
    ],
    "notation": "contains",
-   "label": "포함한다",
+   "prefLabel": "포함한다",
    "definition": "s가 o를 구성요소로 가진다.",
-   "domainIncludes": [],
-   "rangeIncludes": [],
-   "inverseOf": "sn:일부이다"
+   "inverseOf": "sn:partOf"
+  }
+ ],
+ "baseProperties": [
+  {
+   "@id": "sn:uses",
+   "@type": [
+    "owl:ObjectProperty"
+   ],
+   "notation": "uses",
+   "prefLabel": "사용한다",
+   "definition": "s가 o를 사용",
+   "isDefinedBy": "sn:general"
+  },
+  {
+   "@id": "sn:partOf",
+   "@type": [
+    "owl:ObjectProperty"
+   ],
+   "notation": "partOf",
+   "prefLabel": "일부이다",
+   "definition": "s는 o의 구성요소",
+   "isDefinedBy": "sn:general",
+   "inverseOf": "sn:contains"
+  },
+  {
+   "@id": "sn:solves",
+   "@type": [
+    "owl:ObjectProperty"
+   ],
+   "notation": "solves",
+   "prefLabel": "해결한다",
+   "definition": "s가 문제 o를 해결",
+   "isDefinedBy": "sn:general"
+  },
+  {
+   "@id": "sn:relatedTo",
+   "@type": [
+    "owl:ObjectProperty"
+   ],
+   "notation": "relatedTo",
+   "prefLabel": "관련있다",
+   "definition": "위에 해당하지 않는 관련",
+   "isDefinedBy": "sn:general"
+  },
+  {
+   "@id": "rdf:type",
+   "prefLabel": "인스턴스이다",
+   "definition": "instance s는 class o의 한 사례"
+  },
+  {
+   "@id": "rdfs:subClassOf",
+   "prefLabel": "하위클래스이다",
+   "definition": "class s는 class o의 하위 분류"
   }
  ]
 }

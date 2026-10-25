@@ -1,4 +1,4 @@
-"""일반 온톨로지 규칙 사전(SKOS) — 추출 어휘, 관계 시그니처, 사전 무결성."""
+"""일반 온톨로지 규칙 사전(OWL 클래스 + SKOS 주석) — 추출 어휘, 관계 시그니처, 사전 무결성."""
 import json
 
 
@@ -47,32 +47,47 @@ def test_predicate_strength_ranks_ontology_relations():
     assert ge.predicate_strength("작성 언어") > ge.predicate_strength("사용한다") > ge.predicate_strength("관련있다")
 
 
-# ── SKOS 규칙 사전 ─────────────────────────────────────────
+# ── 규칙 사전 파일 (OWL 클래스 + SKOS 주석) ────────────────
 
 def _scheme():
     from services import graph_extraction as ge
     return json.loads(ge.ONTOLOGY_PATH.read_text(encoding="utf-8"))
 
 
-def test_ontology_file_is_skos_concept_scheme():
-    scheme = _scheme()
-    assert scheme["@context"]["skos"] == "http://www.w3.org/2004/02/skos/core#"
-    assert scheme["@type"] == "skos:ConceptScheme"
-    concepts = scheme["concepts"]
-    ids = {c["@id"] for c in concepts}
-    assert all(c["@type"] == "skos:Concept" for c in concepts)
-    # prefLabel은 사전 안에서 하나뿐이어야 한다 (SKOS 무결성 조건 S14)
-    labels = [c["prefLabel"] for c in concepts]
+def _members(expr) -> set[str]:
+    """rdfs:domain/range 값 — 클래스 하나이거나 owl:unionOf 클래스 묶음."""
+    return {expr} if isinstance(expr, str) else set(expr["unionOf"])
+
+
+def test_ontology_file_declares_owl_classes_with_skos_annotations():
+    onto = _scheme()
+    assert onto["@context"]["skos"] == "http://www.w3.org/2004/02/skos/core#"
+    assert onto["@type"] == "owl:Ontology"
+    classes = onto["classes"]
+    ids = {c["@id"] for c in classes}
+    assert all(c["@type"] == "owl:Class" and c["prefLabel"] for c in classes)
+    labels = [c["prefLabel"] for c in classes]
     assert len(labels) == len(set(labels))
-    # broader는 사전 안의 개념을 가리키고, 최상위 개념은 broader가 없는 개념과 같다
-    assert all(c["broader"] in ids for c in concepts if "broader" in c)
-    assert set(scheme["hasTopConcept"]) == {c["@id"] for c in concepts if "broader" not in c}
-    for p in scheme["properties"]:
+    assert all(c["subClassOf"] in ids for c in classes if "subClassOf" in c)
+    defined = ids | {p["@id"] for p in onto["properties"] + onto["baseProperties"]}
+    for p in onto["properties"]:
         assert "owl:ObjectProperty" in p["@type"]
-        assert set(p["domainIncludes"]) <= ids and set(p["rangeIncludes"]) <= ids
+        for key in ("domain", "range"):
+            if key in p:
+                assert _members(p[key]) <= ids
+        # 역관계는 사전 안에 정의된 관계를 가리킨다
+        if "inverseOf" in p:
+            assert p["inverseOf"] in defined
 
 
-def test_skos_scheme_loads_into_internal_vocabulary():
+def test_base_vocabulary_in_file_matches_code():
+    from services import graph_extraction as ge
+    base = {p["prefLabel"]: p.get("definition") for p in _scheme()["baseProperties"]}
+    assert {k: base[k] for k in ge.BASE_PREDICATES} == ge.BASE_PREDICATES
+    assert set(base) == set(ge.BASE_PREDICATES) | set(ge.STRUCT_PREDICATES)
+
+
+def test_ontology_loads_into_internal_vocabulary():
     from services import graph_extraction as ge
     types = {t["name"]: t for t in ge.ONTOLOGY["types"]}
     assert types["오류"]["parent"] == "문제" and types["문제"]["parent"] is None
@@ -81,6 +96,6 @@ def test_skos_scheme_loads_into_internal_vocabulary():
     assert types["프로그래밍 언어"]["description"] == "예: Python, TypeScript."
     preds = {p["name"]: p for p in ge.ONTOLOGY["predicates"]}
     assert preds["구현체"]["inverse_of"] == "구현한다"
-    assert preds["포함한다"]["inverse_of"] == "일부이다"   # 코드에 정의된 기본 어휘를 가리킨다
+    assert preds["포함한다"]["inverse_of"] == "일부이다"   # 기본 관계(baseProperties)를 가리킨다
     assert preds["연동한다"]["symmetric"] and preds["위치한다"]["transitive"]
     assert preds["작성 언어"]["range"] == ["프로그래밍 언어"]

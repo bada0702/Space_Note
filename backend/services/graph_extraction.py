@@ -48,18 +48,23 @@ ONTOLOGY_PATH = Path(os.getenv(
 ))
 
 
-def _from_skos(scheme: dict) -> dict:
-    """SKOS ConceptScheme(JSON-LD)을 추출 코드가 쓰는 유형·관계 목록으로 바꾼다.
+def _from_owl(onto: dict) -> dict:
+    """OWL 온톨로지(JSON-LD, 라벨·정의는 SKOS 주석)를 추출 코드가 쓰는 유형·관계 목록으로 바꾼다.
 
-    skos:Concept → 유형 (broader → parent, definition + example → description),
-    owl:ObjectProperty → 관계 (schema:domainIncludes/rangeIncludes → domain/range).
-    사전 밖의 IRI(코드의 기본 관계 등)는 sn: 뒤의 이름을 그대로 라벨로 쓴다.
+    owl:Class → 유형 (subClassOf → parent, skos:definition + skos:example → description),
+    owl:ObjectProperty → 관계 (rdfs:domain/range, 여러 클래스면 owl:unionOf → domain/range).
+    baseProperties(기본·구조 관계)는 코드가 따로 다루므로 IRI 라벨로만 쓴다.
     """
-    label = {c["@id"]: c["prefLabel"] for c in scheme["concepts"]}
-    label |= {p["@id"]: p["label"] for p in scheme["properties"]}
+    label = {x["@id"]: x["prefLabel"]
+             for x in onto["classes"] + onto["properties"] + onto["baseProperties"]}
 
     def name(iri: str | None) -> str | None:
-        return iri and label.get(iri, iri.removeprefix("sn:"))
+        return iri and label[iri]
+
+    def members(expr) -> list[str]:
+        if expr is None:
+            return []
+        return [name(i) for i in ([expr] if isinstance(expr, str) else expr["unionOf"])]
 
     def description(c: dict) -> str:
         examples = f"예: {', '.join(c['example'])}." if c.get("example") else ""
@@ -67,25 +72,24 @@ def _from_skos(scheme: dict) -> dict:
 
     types = [
         {"key": c["notation"], "name": c["prefLabel"], "description": description(c),
-         "parent": name(c.get("broader"))}
-        for c in scheme["concepts"]
+         "parent": name(c.get("subClassOf"))}
+        for c in onto["classes"]
     ]
     predicates = [
-        {"key": p["notation"], "name": p["label"], "description": p.get("definition", ""),
-         "domain": [name(i) for i in p["domainIncludes"]],
-         "range": [name(i) for i in p["rangeIncludes"]],
+        {"key": p["notation"], "name": p["prefLabel"], "description": p.get("definition", ""),
+         "domain": members(p.get("domain")), "range": members(p.get("range")),
          "transitive": "owl:TransitiveProperty" in p["@type"],
          "symmetric": "owl:SymmetricProperty" in p["@type"],
          "inverse_of": name(p.get("inverseOf"))}
-        for p in scheme["properties"]
+        for p in onto["properties"]
     ]
-    return {"name": scheme["prefLabel"], "source": scheme.get("source"),
+    return {"name": onto["prefLabel"], "source": onto.get("source"),
             "types": types, "predicates": predicates}
 
 
 def load_ontology(path: Path = ONTOLOGY_PATH) -> dict:
     try:
-        return _from_skos(json.loads(Path(path).read_text(encoding="utf-8")))
+        return _from_owl(json.loads(Path(path).read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError):
         logger.warning("ontology not loaded from %s; using base vocabulary only", path)
         return {"types": [], "predicates": []}
