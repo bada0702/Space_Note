@@ -53,6 +53,22 @@ def write_md(title: str, content: str, tags: list[str], existing_path: str | Non
     return str(path)
 
 
+def parse_md(content: str) -> tuple[list[str], str]:
+    """frontmatter의 tags: [a, b] 목록과 frontmatter를 뗀 본문을 돌려준다."""
+    tags: list[str] = []
+    body = content
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            frontmatter = parts[1]
+            body = parts[2].lstrip()
+            # tags: [a, b, c] 형식 파싱
+            list_match = re.search(r"tags:\s*\[(.*?)\]", frontmatter)
+            if list_match:
+                tags = [t.strip() for t in list_match.group(1).split(",") if t.strip()]
+    return tags, body
+
+
 def delete_md(path: str) -> None:
     """저장된 노트의 실제 경로(하위 폴더 포함)를 받아 삭제한다."""
     p = Path(path)
@@ -141,18 +157,7 @@ def sync_db_with_vault() -> None:
                 except Exception as e:
                     logger.error(f"Failed to rewrite cleaned file {path}: {e}")
 
-            # Frontmatter 파싱
-            tags = []
-            body = content
-            if content.startswith("---"):
-                parts = content.split("---", 2)
-                if len(parts) >= 3:
-                    frontmatter = parts[1]
-                    body = parts[2].lstrip()
-                    # tags: [a, b, c] 형식 파싱
-                    list_match = re.search(r"tags:\s*\[(.*?)\]", frontmatter)
-                    if list_match:
-                        tags = [t.strip() for t in list_match.group(1).split(",") if t.strip()]
+            tags, body = parse_md(content)
 
             title = path.stem
             word_count = len(body.split())

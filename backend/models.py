@@ -25,6 +25,15 @@ class ChatGPTImport(BaseModel):
     category_id: Optional[str] = None
 
 
+class MdFile(BaseModel):
+    path: str  # 고른 폴더 기준 상대 경로 (예: 은하/노트.md)
+    content: str
+
+
+class MdFilesImport(BaseModel):
+    files: list[MdFile]
+
+
 class NotePatch(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None

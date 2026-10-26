@@ -4,12 +4,14 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
+import zipfile
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
 from db import get_conn
-from models import ChatGPTImport, NoteCreate, NotePatch
+from models import ChatGPTImport, MdFilesImport, NoteCreate, NotePatch
 from services import chatgpt_share, gemini_share, vault
-from services import extraction
+from services import extraction, note_import
 from services import graph_extraction, graph_worker
 from services.tagparse import extract_tags
 from services.textnorm import norm_name
@@ -238,6 +240,28 @@ def import_chatgpt(body: ChatGPTImport, bg: BackgroundTasks):
     title = _unique_title(vault.safe_filename(conv.title).replace(" ", "_"))
     content = chatgpt_share.to_markdown(conv, url)
     return create_note(NoteCreate(title=title, category_id=body.category_id, content=content), bg)
+
+
+_MAX_ZIP_BYTES = 200 * 1024 * 1024
+
+
+@router.post("/notes/import/files")
+def import_md_files(body: MdFilesImport):
+    """폴더에서 읽은 .md 파일들(상대 경로 + 본문)을 노트로 등록한다."""
+    return note_import.import_md_files([(f.path, f.content) for f in body.files])
+
+
+@router.post("/notes/import/zip")
+async def import_md_zip(request: Request):
+    """raw body로 받은 zip 안의 .md 파일들을 노트로 등록한다."""
+    data = await request.body()
+    if len(data) > _MAX_ZIP_BYTES:
+        raise HTTPException(status_code=413, detail="파일이 너무 큽니다 (최대 200MB)")
+    try:
+        files = note_import.read_zip(data)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="zip 파일을 읽을 수 없습니다")
+    return note_import.import_md_files(files)
 
 
 @router.get("/notes/{nid}")
