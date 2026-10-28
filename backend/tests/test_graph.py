@@ -283,6 +283,32 @@ def test_ascii_alias_respects_word_boundary(client):
         assert len(match_seeds(conn, "AI가 뭐야")) == 1
 
 
+def test_shorter_alias_inside_longer_match_is_not_seed(client):
+    # '그래프 DB'가 GraphDB에 걸리면, 그 안의 'DB'(다른 개념의 동의어)는 출발 개념이 아니다
+    from db import get_conn
+    from services.graph_retrieval import match_seeds
+    n = _note(client, "DB 노트", "x")
+    _store(n["id"], [("GraphDB", "도구", 3, ["그래프 DB"]), ("MySQL", "도구", 3, ["DB"])])
+    with get_conn() as conn:
+        assert {h.name for h in match_seeds(conn, "그래프 DB 비교").values()} == {"GraphDB"}
+        assert {h.name for h in match_seeds(conn, "DB 설정").values()} == {"MySQL"}
+
+
+def test_many_expanded_concepts_do_not_outrank_direct_mention(client):
+    # 질문 개념을 직접 다룬 노트가, 이웃 개념만 잔뜩 가진 노트보다 앞서야 한다
+    from db import get_conn
+    from services import graph_retrieval
+    direct = _note(client, "RAG 정리", "x")
+    around = _note(client, "주변 개념 모음", "x")
+    neighbors = [f"도구{i}" for i in range(6)]
+    _store(direct["id"], [("RAG", "기술", 2, []), *[(n, "도구", 1, []) for n in neighbors]],
+           [("RAG", "사용한다", n) for n in neighbors])
+    _store(around["id"], [(n, "도구", 3, []) for n in neighbors])
+    with get_conn() as conn:
+        notes = graph_retrieval.graph_note_scores(conn, "RAG")
+    assert notes[direct["id"]].score > notes[around["id"]].score
+
+
 def test_hub_concepts_are_not_expanded(client, monkeypatch):
     from db import get_conn
     from services import graph_retrieval

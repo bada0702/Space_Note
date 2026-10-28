@@ -50,18 +50,25 @@ def match_seeds(conn, query: str) -> dict[str, ConceptHit]:
         return {}
     qnorm = norm_name(query)
     grams = _query_ngrams(query)
-    seeds: dict[str, ConceptHit] = {}
     rows = conn.execute(
         "SELECT a.norm AS norm, a.alias AS alias, c.id AS id, c.name AS name "
         "FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id"
     ).fetchall()
+    matched = []
     for r in rows:
         n = r["norm"]
         if _ASCII.fullmatch(n):
             hit = n in grams          # 영문은 단어 경계를 지킨다 ('ai'가 'mail'에 걸리지 않게)
         else:
             hit = len(n) >= 2 and n in qnorm
-        if hit and r["id"] not in seeds:
+        if hit:
+            matched.append(r)
+    seeds: dict[str, ConceptHit] = {}
+    for r in matched:
+        # 더 긴 일치('그래프 DB')에 포함된 짧은 동의어('DB')는 다른 개념을 가리키면 버린다
+        if any(r["norm"] != o["norm"] and r["norm"] in o["norm"] and r["id"] != o["id"] for o in matched):
+            continue
+        if r["id"] not in seeds:
             seeds[r["id"]] = ConceptHit(1.0, r["name"], [], seed_label=r["name"])
     return seeds
 
@@ -150,9 +157,18 @@ def _scope(category_id: str | None, exclude_id: str | None) -> tuple[str, list]:
     return clause, params
 
 
+def idf(total: int, df: int) -> float:
+    """개념의 희소성 — 노트 total개 중 df개에 나오면 log(1 + total/df)."""
+    return math.log(1 + total / df)
+
+
 def score_notes(conn, concepts: dict[str, ConceptHit],
                 category_id: str | None = None, exclude_id: str | None = None) -> dict[str, NoteHit]:
-    """개념 점수 → 노트 점수. 노트에서의 중요도(weight)와 개념의 희소성(IDF)을 곱한다."""
+    """개념 점수 → 노트 점수. 노트에서의 중요도(weight)와 개념의 희소성(IDF)을 곱한다.
+
+    출발 개념 기여는 모두 더하고, 관계로 넓힌 개념은 가장 큰 하나만 더한다.
+    이웃 개념을 여럿 가진 노트가 합산만으로 질문 개념을 직접 다룬 노트를 앞지르지 않게.
+    """
     if not concepts:
         return {}
     scope_n, scope_params = _scope(category_id, exclude_id)
@@ -168,21 +184,23 @@ def score_notes(conn, concepts: dict[str, ConceptHit],
     df: dict[str, int] = {}
     for r in rows:
         df[r["cid"]] = df.get(r["cid"], 0) + 1
-    notes: dict[str, NoteHit] = {}
-    best: dict[str, float] = {}
+    seed_sum: dict[str, float] = {}
+    expanded_max: dict[str, float] = {}
+    best: dict[str, tuple[float, ConceptHit]] = {}
     for r in rows:
         hit = concepts[r["cid"]]
-        contrib = hit.score * (r["w"] / 3) * math.log(1 + total / df[r["cid"]])
-        nh = notes.get(r["note_id"])
-        if nh is None:
-            notes[r["note_id"]] = NoteHit(contrib, hit)
-            best[r["note_id"]] = contrib
+        nid = r["note_id"]
+        contrib = hit.score * (r["w"] / 3) * idf(total, df[r["cid"]])
+        if hit.path:
+            expanded_max[nid] = max(expanded_max.get(nid, 0.0), contrib)
         else:
-            nh.score += contrib
-            if contrib > best[r["note_id"]]:
-                best[r["note_id"]] = contrib
-                nh.concept = hit
-    return notes
+            seed_sum[nid] = seed_sum.get(nid, 0.0) + contrib
+        if nid not in best or contrib > best[nid][0]:
+            best[nid] = (contrib, hit)
+    return {
+        nid: NoteHit(seed_sum.get(nid, 0.0) + expanded_max.get(nid, 0.0), hit)
+        for nid, (_, hit) in best.items()
+    }
 
 
 def format_path(hit: ConceptHit) -> str:
