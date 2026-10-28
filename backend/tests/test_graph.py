@@ -267,6 +267,36 @@ def test_note_edits_queue_graph_and_api_controls(client):
     assert client.get("/graph/status").status_code == 401
 
 
+def test_cancel_clears_pending_queue(client):
+    done = _note(client, "끝난 노트", "본문")
+    _note(client, "대기 노트", "본문")
+    from db import get_conn
+    with get_conn() as conn:
+        conn.execute("UPDATE notes SET graph_status = 'done' WHERE id = ?", (done["id"],))
+    r = client.post("/graph/cancel", headers=AUTH)
+    assert r.json() == {"cancelled": 1}
+    assert _count("SELECT COUNT(*) FROM notes WHERE graph_status = 'pending'") == 0
+    assert _count("SELECT COUNT(*) FROM notes WHERE graph_status = 'done'") == 1
+    assert client.post("/graph/cancel").status_code == 401
+
+
+def test_cancel_during_extraction_discards_result(client, monkeypatch):
+    # 모델 응답을 기다리는 동안 취소되면 그 결과를 저장하지 않는다
+    from db import get_conn
+    from services import graph_extraction as ge
+    n = _note(client, "노트", "RAG 정리")
+
+    def cancelled_while_waiting(content):
+        with get_conn() as conn:
+            conn.execute("UPDATE notes SET graph_status = 'idle' WHERE id = ?", (n["id"],))
+        return json.dumps({"nodes": [{"name": "RAG", "kind": "class"}], "edges": []})
+
+    monkeypatch.setattr(ge, "call_model", cancelled_while_waiting)
+    assert ge.process_note(n["id"]) == "idle"
+    assert _count("SELECT COUNT(*) FROM note_concepts") == 0
+    assert _count("SELECT COUNT(*) FROM notes WHERE graph_status = 'idle'") == 1
+
+
 def test_worker_waits_for_quiet_period(client):
     from services import graph_worker
     n = _note(client, "편집 중", "본문")

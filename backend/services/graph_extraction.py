@@ -587,9 +587,11 @@ def process_note(note_id: str) -> str:
 
     with get_conn() as conn:
         # 처리하는 동안 본문이 바뀌었으면 결과를 버리고 다음 차례에 다시 처리
-        cur = conn.execute("SELECT content FROM notes WHERE id = ?", (note_id,)).fetchone()
+        cur = conn.execute("SELECT content, graph_status FROM notes WHERE id = ?", (note_id,)).fetchone()
         if cur is None:
             return "missing"
+        if cur["graph_status"] == "idle":  # 기다리는 동안 분석이 취소됨
+            return "idle"
         if content_hash(cur["content"] or "") != digest:
             return "pending"
         store_graph(conn, note_id, graph)

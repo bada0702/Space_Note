@@ -112,6 +112,11 @@ export function GraphSettings() {
         <button type="button" className="sn-btn" onClick={handleRebuild} disabled={busy || !status}>
           전체 다시 분석
         </button>
+        {status && status.pending > 0 && (
+          <button type="button" className="sn-btn" onClick={() => run(aiApi.cancelGraph)} disabled={busy}>
+            분석 취소
+          </button>
+        )}
         {status && status.failed > 0 && (
           <button type="button" className="sn-btn" onClick={() => run(aiApi.retryFailedGraph)} disabled={busy}>
             실패한 노트만 다시 시도

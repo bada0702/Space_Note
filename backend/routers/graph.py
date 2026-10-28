@@ -59,6 +59,16 @@ def graph_retry_failed():
     return counts
 
 
+@router.post("/graph/cancel")
+def graph_cancel():
+    """대기 중인 분석을 모두 취소한다 (미분석으로 되돌림). 지금 모델 응답을 기다리는 노트는 결과를 버린다."""
+    with get_conn() as conn:
+        cancelled = conn.execute(
+            "UPDATE notes SET graph_status = 'idle' WHERE graph_status = 'pending' AND is_archived = 0"
+        ).rowcount
+    return {"cancelled": cancelled}
+
+
 # ── 별자리: 여러 노트에 걸친 지식 그래프 개념 ──────────────────
 
 CONSTELLATION_MIN_NOTES = 3

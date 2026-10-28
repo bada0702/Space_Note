@@ -32,6 +32,7 @@ export const aiApi = {
   getGraphStatus: (): Promise<GraphStatus> => apiFetch<GraphStatus>('/graph/status'),
   rebuildGraph: (): Promise<unknown> => apiFetch('/graph/rebuild', { method: 'POST' }),
   retryFailedGraph: (): Promise<unknown> => apiFetch('/graph/retry-failed', { method: 'POST' }),
+  cancelGraph: (): Promise<{ cancelled: number }> => apiFetch('/graph/cancel', { method: 'POST' }),
 
   async *streamChat(params: {
     model: AIModel
