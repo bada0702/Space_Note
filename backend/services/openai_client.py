@@ -20,6 +20,10 @@ def _api_key() -> str:
     return db_key or os.getenv("OPENAI_API_KEY", "")
 
 
+def has_api_key() -> bool:
+    return bool(_api_key())
+
+
 def _error_message(body: bytes, status: int) -> str:
     try:
         return json.loads(body)["error"]["message"]
@@ -64,3 +68,32 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
             elif kind == "response.failed":
                 err = (event.get("response") or {}).get("error") or {}
                 raise ValueError(err.get("message") or "OpenAI 응답 생성 실패")
+
+
+def complete_json(model: str, prompt: str) -> str:
+    """JSON 출력을 강제한 단발 요청 (지식 그래프 추출용). 응답 텍스트를 돌려준다."""
+    if model not in ALLOWED_CHAT_MODELS:
+        raise ValueError(f"현재 지원하는 OpenAI 모델이 아닙니다. (지원: {', '.join(sorted(ALLOWED_CHAT_MODELS))})")
+    key = _api_key()
+    if not key:
+        raise ValueError("OpenAI API 키가 설정되지 않았습니다")
+    resp = httpx.post(
+        _URL,
+        headers={"Authorization": f"Bearer {key}"},
+        json={
+            "model": model,
+            "input": [{"role": "user", "content": prompt}],
+            "text": {"format": {"type": "json_object"}},
+        },
+        timeout=httpx.Timeout(300.0, connect=10.0),
+    )
+    if resp.status_code >= 400:
+        raise ValueError(_error_message(resp.content, resp.status_code))
+    # output에는 추론 요약 등 다른 항목도 섞이므로 message의 output_text만 모은다
+    return "".join(
+        c.get("text", "")
+        for item in resp.json().get("output", [])
+        if item.get("type") == "message"
+        for c in item.get("content", [])
+        if c.get("type") == "output_text"
+    )

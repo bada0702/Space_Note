@@ -5,7 +5,7 @@ import { MODEL_OPTIONS } from '../../constants/models'
 import type { GraphStatus } from '../../types'
 
 const DEFAULT_GRAPH_MODEL = 'gemini-3.1-flash-lite'
-const GEMINI_MODELS = MODEL_OPTIONS.filter(m => m.group === 'Google Gemini')
+const CLOUD_GROUPS = [...new Set(MODEL_OPTIONS.map(m => m.group))]
 
 /** 설정 화면의 '지식 그래프' 항목 — 분석 진행 상황과 일괄 분석/재시도. */
 export function GraphSettings() {
@@ -17,7 +17,7 @@ export function GraphSettings() {
   const graphModel = settings?.graph_model || DEFAULT_GRAPH_MODEL
   const modelLabel = graphModel.startsWith('ollama:')
     ? `Ollama ${graphModel.slice('ollama:'.length)}`
-    : GEMINI_MODELS.find(m => m.value === graphModel)?.label ?? graphModel
+    : MODEL_OPTIONS.find(m => m.value === graphModel)?.label ?? graphModel
 
   const refresh = () =>
     aiApi.getGraphStatus()
@@ -93,9 +93,11 @@ export function GraphSettings() {
           background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', fontSize: 13,
         }}
       >
-        <optgroup label="Google Gemini">
-          {GEMINI_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </optgroup>
+        {CLOUD_GROUPS.map(group => (
+          <optgroup key={group} label={group}>
+            {MODEL_OPTIONS.filter(m => m.group === group).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </optgroup>
+        ))}
         {ollamaOptions.length > 0 && (
           <optgroup label="Ollama (로컬)">
             {ollamaOptions.map(name => <option key={name} value={`ollama:${name}`}>{name}</option>)}

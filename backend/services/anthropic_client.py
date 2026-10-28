@@ -2,12 +2,15 @@ import json
 import re
 from typing import Iterator
 
+import anthropic
 from anthropic import Anthropic
 
 from config import settings
 from db import get_conn
 
 ALLOWED_CHAT_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-sonnet-4-6", "claude-haiku-4-5"}
+# 정책상 거절(refusal)하면 서버가 다른 모델로 다시 시도하게 할 수 있는 모델
+_FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5"}
 
 _EXTRACT_PROMPT = (
     "다음 노트에서 핵심 엔티티(인물/개념/장소/조직 등)를 추출해 "
@@ -81,3 +84,31 @@ def stream_chat(model: str, system: str, messages: list[dict]) -> Iterator[str]:
     ) as stream:
         for text in stream.text_stream:
             yield text
+
+
+def complete_json(model: str, prompt: str) -> str:
+    """JSON으로 답하게 한 단발 요청 (지식 그래프 추출용). 응답 텍스트를 돌려준다."""
+    if model not in ALLOWED_CHAT_MODELS:
+        raise ValueError(f"현재 지원하는 Anthropic 모델이 아닙니다. (지원: {', '.join(sorted(ALLOWED_CHAT_MODELS))})")
+    key = _api_key()
+    if not key:
+        raise ValueError("Anthropic API 키가 설정되지 않았습니다")
+    extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"} if model in _FALLBACK_MODELS else {}
+    try:
+        msg = Anthropic(api_key=key).beta.messages.create(
+            model=model,
+            max_tokens=16000,
+            messages=[{"role": "user", "content": prompt}],
+            **extra,
+        )
+    except anthropic.AuthenticationError as e:
+        raise ValueError("Anthropic API 키가 유효하지 않습니다") from e
+    except anthropic.RateLimitError as e:
+        raise ValueError("Anthropic API 사용 한도를 초과했습니다") from e
+    except anthropic.APIStatusError as e:
+        raise ValueError(f"Anthropic 요청이 실패했습니다 (HTTP {e.status_code})") from e
+    except anthropic.APIConnectionError as e:
+        raise RuntimeError("Anthropic 서버에 연결할 수 없습니다") from e
+    if msg.stop_reason == "refusal":
+        raise ValueError("모델이 이 노트의 분석을 거절했습니다")
+    return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text")

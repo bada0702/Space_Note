@@ -416,6 +416,81 @@ def test_call_model_uses_ollama_when_selected(client, monkeypatch):
     assert captured["json"]["messages"][0]["content"].endswith("노트 본문")
 
 
+def test_call_model_uses_claude_when_selected(client, monkeypatch):
+    from services import graph_extraction as ge
+    _set(graph_model="claude-opus-5-5", anthropic_api_key="k")
+    captured = {}
+
+    class Block:
+        type = "text"
+        text = '{"nodes": [], "edges": []}'
+
+    class Msg:
+        stop_reason = "end_turn"
+        content = [Block()]
+
+    class FakeAnthropic:
+        def __init__(self, api_key):
+            captured["key"] = api_key
+            self.beta = self
+            self.messages = self
+
+        def create(self, **kw):
+            captured.update(kw)
+            return Msg()
+
+    monkeypatch.setattr(ge.anthropic_client, "Anthropic", FakeAnthropic)
+    assert ge.call_model("노트 본문") == '{"nodes": [], "edges": []}'
+    assert captured["key"] == "k"
+    assert captured["model"] == "claude-opus-5-5"
+    assert captured["fallbacks"] == "default"   # 정책 거절 시 서버가 다른 모델로 재시도
+    assert captured["messages"][0]["content"].endswith("노트 본문")
+
+    Msg.stop_reason = "refusal"
+    with pytest.raises(ValueError, match="거절"):
+        ge.call_model("노트 본문")
+
+
+def test_call_model_uses_openai_when_selected(client, monkeypatch):
+    from services import graph_extraction as ge
+    _set(graph_model="gpt-6-luna", openai_api_key="k")
+    captured = {}
+
+    class Resp:
+        status_code = 200
+        content = b""
+        def json(self):
+            return {"output": [
+                {"type": "reasoning", "summary": []},
+                {"type": "message", "content": [{"type": "output_text", "text": '{"nodes": []}'}]},
+            ]}
+
+    def fake_post(url, headers=None, json=None, **kw):
+        captured["headers"], captured["json"] = headers, json
+        return Resp()
+
+    monkeypatch.setattr(ge.openai_client.httpx, "post", fake_post)
+    assert ge.call_model("노트 본문") == '{"nodes": []}'
+    assert captured["headers"]["Authorization"] == "Bearer k"
+    assert captured["json"]["model"] == "gpt-6-luna"
+    assert captured["json"]["text"] == {"format": {"type": "json_object"}}
+    assert captured["json"]["input"][0]["content"].endswith("노트 본문")
+
+
+def test_model_ready_reports_missing_claude_or_openai_key(client, monkeypatch):
+    from services import graph_extraction as ge
+    monkeypatch.setattr(ge.anthropic_client.settings, "ANTHROPIC_API_KEY", "")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _set(graph_model="claude-haiku-4-5", anthropic_api_key="")
+    assert "Anthropic" in ge.model_ready()
+    _set(anthropic_api_key="k")
+    assert ge.model_ready() is None
+    _set(graph_model="gpt-6-luna", openai_api_key="")
+    assert "OpenAI" in ge.model_ready()
+    _set(openai_api_key="k")
+    assert ge.model_ready() is None
+
+
 def test_model_ready_reports_missing_ollama_or_key(client, monkeypatch):
     from services import graph_extraction as ge
     _set(graph_model="ollama:qwen3:8b")

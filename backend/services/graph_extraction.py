@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 
 from db import get_conn
-from services import gemini_client, ollama_client
+from services import anthropic_client, gemini_client, ollama_client, openai_client
 from services.textnorm import norm_name
 
 logger = logging.getLogger(__name__)
@@ -235,16 +235,25 @@ def model_ready() -> str | None:
         if not ollama_client.list_models():
             return "Ollama 서버에 연결할 수 없습니다 (설정의 Ollama 주소를 확인하세요)"
         return None
+    if model.startswith("claude"):
+        return None if anthropic_client.has_api_key() else "Anthropic API 키가 설정되지 않았습니다 (설정의 AI 모델에서 저장하세요)"
+    if model.startswith("gpt"):
+        return None if openai_client.has_api_key() else "OpenAI API 키가 설정되지 않았습니다 (설정의 AI 모델에서 저장하세요)"
     if not gemini_client.has_api_key():
         return "Google API 키가 설정되지 않았습니다 (설정의 AI 모델에서 저장하세요)"
     return None
 
 
 def call_model(content: str) -> str:
-    """설정된 추출 모델(Gemini 또는 Ollama)에 요청해 응답 텍스트를 돌려준다."""
+    """설정된 추출 모델(Gemini, Claude, GPT, Ollama)에 요청해 응답 텍스트를 돌려준다."""
     model = graph_model()
+    prompt = PROMPT + content[:MAX_INPUT_CHARS]
     if ollama_client.is_ollama_model(model):
-        return ollama_client.chat_json(model, PROMPT + content[:MAX_INPUT_CHARS])
+        return ollama_client.chat_json(model, prompt)
+    if model.startswith("claude"):
+        return anthropic_client.complete_json(model, prompt)
+    if model.startswith("gpt"):
+        return openai_client.complete_json(model, prompt)
     return _call_gemini(model, content)
 
 
