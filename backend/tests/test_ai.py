@@ -329,3 +329,35 @@ def test_rag_excerpt_collects_separate_passages(client):
     assert "알파 설정은 이렇게 한다." in r[0]["excerpt"]
     assert "베타 설정은 저렇게 한다." in r[0]["excerpt"]
     assert len(r[0]["excerpt"]) <= ai_router.RAG_EXCERPT + 20
+
+
+def test_rag_new_topic_ignores_previous_question(client, monkeypatch):
+    # 주제가 바뀌면(TTS → SMB) 앞 질문의 노트가 근거에 섞이지 않는다
+    client.post("/notes", json={"title": "TTS 엔진 정리", "content": "TTS 음성 합성 엔진"}, headers=AUTH)
+    client.post("/notes", json={"title": "SMB 공유 오류", "content": "SMB 445 포트 확인"}, headers=AUTH)
+    system = _capture_system(client, monkeypatch, {
+        "messages": [
+            {"role": "user", "content": "TTS 뭐야"},
+            {"role": "assistant", "content": "음성 합성입니다"},
+            {"role": "user", "content": "SMB 안될때"},
+        ],
+        "use_rag": True,
+    })
+    assert "SMB 공유 오류" in system
+    assert "TTS 엔진 정리" not in system
+
+
+def test_rag_follow_up_without_topic_uses_previous_question(client, monkeypatch):
+    # 이번 질문만으로 노트를 못 찾으면("그건 왜?") 앞 질문과 합쳐 다시 찾는다
+    client.post("/notes", json={"title": "SMB 공유 오류", "content": "SMB 445 포트 확인"}, headers=AUTH)
+    client.post("/notes", json={"title": "점심 메뉴", "content": "김치찌개"}, headers=AUTH)
+    system = _capture_system(client, monkeypatch, {
+        "messages": [
+            {"role": "user", "content": "SMB 안될때"},
+            {"role": "assistant", "content": "포트를 확인하세요"},
+            {"role": "user", "content": "그건 왜?"},
+        ],
+        "use_rag": True,
+    })
+    assert "SMB 공유 오류" in system
+    assert "점심 메뉴" not in system

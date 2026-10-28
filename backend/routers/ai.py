@@ -312,13 +312,18 @@ def _build_system(req: ChatRequest) -> tuple[str, list[dict]]:
                 parts.append(f"[현재 노트] {row['title']}\n{row['content']}")
 
         if req.use_rag:
-            # 후속 질문("그건 왜?")도 주제를 잃지 않도록 최근 사용자 발화 2개를 합쳐 검색
+            # 이번 질문으로 먼저 찾는다 — 앞 질문을 늘 합치면 주제가 바뀌어도(TTS → SMB) 앞 주제 노트가 섞인다.
+            # 못 찾으면 후속 질문("그건 왜?")으로 보고 최근 사용자 발화 2개를 합쳐 다시 찾는다
             user_turns = [m.content for m in req.messages if m.role == "user"]
-            query = "\n".join(user_turns[-2:])
             notes = _retrieve_notes(
-                conn, query, req.context_category_id, req.context_note_id,
-                context_note_id=req.context_note_id,
+                conn, user_turns[-1] if user_turns else "", req.context_category_id, req.context_note_id,
+                fallback_recent=False, context_note_id=req.context_note_id,
             )
+            if not notes:
+                notes = _retrieve_notes(
+                    conn, "\n".join(user_turns[-2:]), req.context_category_id, req.context_note_id,
+                    context_note_id=req.context_note_id,
+                )
             ctx = "\n\n".join(
                 f"# {n['title']}\n(선택 근거: {n['reason']})\n{n['excerpt']}" for n in notes
             )
