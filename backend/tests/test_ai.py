@@ -361,3 +361,23 @@ def test_rag_follow_up_without_topic_uses_previous_question(client, monkeypatch)
     })
     assert "SMB 공유 오류" in system
     assert "점심 메뉴" not in system
+
+
+def test_app_title_and_logo_settings(client):
+    # 비어 있으면 화면은 기본값(SpaceNote, 기본 로고)을 쓴다
+    s = client.get("/ai/settings", headers=AUTH).json()
+    assert s["app_title"] == "" and s["app_logo"] == ""
+
+    logo = "data:image/png;base64,iVBORw0KGgo="
+    r = client.patch("/ai/settings", json={"app_title": "  내 우주 노트  ", "app_logo": logo}, headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["app_title"] == "내 우주 노트"   # 앞뒤 공백 제거
+    assert r.json()["app_logo"] == logo
+    for ok in ("data:image/svg+xml;base64,PHN2Zy8+", "data:image/jpeg;base64,/9j/", ""):
+        assert client.patch("/ai/settings", json={"app_logo": ok}, headers=AUTH).status_code == 200
+
+    assert client.patch("/ai/settings", json={"app_title": "가" * 41}, headers=AUTH).status_code == 422
+    # 이미지 data URL만 받는다 (외부 주소·다른 형식 금지), 크기는 원본 200KB 안팎까지
+    for bad in ("🚀", "https://example.com/logo.png", "data:text/html;base64,PGI+",
+                "data:image/png;base64," + "A" * 300_000):
+        assert client.patch("/ai/settings", json={"app_logo": bad}, headers=AUTH).status_code == 422

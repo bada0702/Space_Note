@@ -1,5 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel
+from typing import Annotated, Optional
+from pydantic import BaseModel, StringConstraints
 
 
 class CategoryCreate(BaseModel):
@@ -52,6 +52,13 @@ class SettingsPatch(BaseModel):
     graph_model: Optional[str] = None
     ollama_base_url: Optional[str] = None
     ollama_custom_models: Optional[list[str]] = None
+    # 왼쪽 위 앱 이름·로고. 빈 문자열이면 화면이 기본값을 쓴다
+    app_title: Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)]] = None
+    # 로고는 이미지 data URL만 (외부 주소를 받으면 앱을 열 때마다 그 서버로 요청이 나간다).
+    # 원본 200KB의 base64 길이(약 273,000자)에 여유를 둔다
+    app_logo: Optional[Annotated[str, StringConstraints(
+        max_length=280_000, pattern=r"^(data:image/(png|jpeg|svg\+xml);base64,[A-Za-z0-9+/=]+)?$",
+    )]] = None
 
 
 class ChatMessage(BaseModel):

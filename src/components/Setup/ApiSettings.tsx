@@ -27,6 +27,7 @@ async function pickFolderViaTauri(): Promise<string | null> {
 }
 
 const MODEL_GROUPS = [...new Set(MODEL_OPTIONS.map(m => m.group))]
+const LOGO_MAX_BYTES = 200 * 1024  // 백엔드 SettingsPatch.app_logo 길이 제한과 맞춘다
 
 const TABS = [
   { key: 'general', label: '일반' },
@@ -46,6 +47,7 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const [customModels, setCustomModels] = useState<string[]>([])
   const [newModel, setNewModel] = useState('')
   const [folderPickerHint, setFolderPickerHint] = useState(false)
+  const [logoError, setLogoError] = useState('')
   const [tab, setTab] = useState<SettingsTab>('general')
 
   const refreshSavedKeys = () => {
@@ -70,6 +72,8 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
           default_model: s.default_model,
           vault_dir: s.vault_dir ?? '',
           ollama_base_url: s.ollama_base_url ?? '',
+          app_title: s.app_title ?? '',
+          app_logo: s.app_logo ?? '',
         })
         setCustomModels(s.ollama_custom_models ?? [])
         refreshSavedKeys()
@@ -186,6 +190,61 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
       <div style={{ maxWidth: 560 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {tab === 'general' && (
+          <div>
+            <label htmlFor="app_title" style={labelStyle}>앱 이름과 로고</label>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{
+                width: 32, height: 32, flex: 'none', borderRadius: 6, border: '1px solid var(--border)',
+                background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, color: 'var(--text-secondary)',
+              }}>
+                {form.app_logo
+                  ? <img src={form.app_logo} alt="로고 미리보기" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+                  : '기본'}
+              </span>
+              <input
+                id="app_title"
+                type="text"
+                placeholder="SpaceNote"
+                maxLength={40}
+                value={form.app_title ?? ''}
+                onChange={e => setField('app_title', e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              <label className="sn-btn" style={{ cursor: 'pointer' }}>
+                로고 이미지 선택
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''  // 같은 파일을 다시 골라도 반응하게
+                    if (!file) return
+                    if (file.size > LOGO_MAX_BYTES) {
+                      setLogoError(`이미지가 너무 큽니다 (${Math.ceil(file.size / 1024)}KB). 200KB 이하로 골라 주세요.`)
+                      return
+                    }
+                    const reader = new FileReader()
+                    reader.onload = () => { setField('app_logo', String(reader.result)); setLogoError('') }
+                    reader.readAsDataURL(file)
+                  }}
+                />
+              </label>
+              {form.app_logo && (
+                <button type="button" className="sn-btn" onClick={() => setField('app_logo', '')}>기본 로고로</button>
+              )}
+            </div>
+            {logoError && <p role="alert" style={{ fontSize: 12, color: '#e03131', marginTop: 4 }}>{logoError}</p>}
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', opacity: 0.7, marginTop: 4 }}>
+              왼쪽 위에 표시됩니다. PNG·JPG·SVG, 200KB 이하 — 정사각형 이미지가 가장 잘 보입니다. 이름을 비워 두면 SpaceNote로 표시됩니다.
+            </p>
+          </div>
+          )}
+
           {tab === 'general' && (
           <div>
             <label htmlFor="vault_dir" style={labelStyle}>노트 저장 경로 (Vault Dir)</label>

@@ -99,6 +99,8 @@ export interface AISettings {
   graph_model?: string            // 지식 그래프(온톨로지) 추출 모델 — gemini-* 또는 ollama:<이름>
   ollama_base_url?: string
   ollama_custom_models?: string[] // 설치 목록에 없어도 직접 추가한 Ollama 모델 이름
+  app_title?: string              // 왼쪽 위 앱 이름 — 비어 있으면 'SpaceNote'
+  app_logo?: string               // 왼쪽 위 로고 이미지(data URL) — 비어 있으면 기본 로고
 }
 
 /** 외부 에이전트(aibot 등)용 MCP 서버 설정 */

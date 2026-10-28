@@ -170,6 +170,11 @@ def init_db() -> None:
                 "ALTER TABLE settings ADD COLUMN mcp_aibot_config TEXT NOT NULL "
                 "DEFAULT '/root/aibot/data/mcp_servers.json'"
             )
+        # 왼쪽 위에 보이는 앱 이름·로고(이미지 data URL) — 비어 있으면 기본값
+        if "app_title" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN app_title TEXT NOT NULL DEFAULT ''")
+        if "app_logo" not in settings_cols:
+            conn.execute("ALTER TABLE settings ADD COLUMN app_logo TEXT NOT NULL DEFAULT ''")
 
         # 마이그레이션(user_version 1): 태그 추출 규칙 강화(코드·색상·숫자 제외)에 맞춰 기존 태그 재계산
         if conn.execute("PRAGMA user_version").fetchone()[0] < 1:

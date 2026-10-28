@@ -1,6 +1,7 @@
 import { useTheme } from './ThemeProvider'
 import { useState, useEffect } from 'react'
 import LiquidGlass from 'liquid-glass-react'
+import { useAIStore } from '../../store/aiStore'
 
 const SIDEBAR_WIDTH = 252
 const GAP = 10  // 화면 가장자리·패널 사이 여백 — 유리 패널 뒤 배경이 보이도록
@@ -16,6 +17,13 @@ interface AppLayoutProps {
 
 export function AppLayout({ sidebar, main, isMap }: AppLayoutProps) {
   const { theme, toggle } = useTheme()
+  const settings = useAIStore(s => s.settings)
+  const loadSettings = useAIStore(s => s.loadSettings)
+  const appTitle = settings?.app_title || 'SpaceNote'
+  const appLogo = settings?.app_logo
+
+  useEffect(() => { loadSettings() }, [loadSettings])
+  useEffect(() => { document.title = appTitle }, [appTitle])
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     return localStorage.getItem('sn-sidebar-open') !== 'false'
   })
@@ -81,12 +89,20 @@ export function AppLayout({ sidebar, main, isMap }: AppLayoutProps) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: 'var(--text-primary)' }}>
-            <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-              <ellipse cx="9" cy="9" rx="8" ry="4" stroke="currentColor" strokeWidth="1.1" opacity="0.55" />
-              <circle cx="9" cy="9" r="1.8" fill="var(--star)" />
-            </svg>
-            <span style={{ fontFamily: 'var(--font-logo)', fontSize: '13px', fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-              SpaceNote
+            {appLogo ? (
+              <img src={appLogo} alt="" aria-hidden="true" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+            ) : (
+              // 토성: 기울어진 고리의 뒤쪽 반을 먼저, 행성, 앞쪽 반 순서로 그려 고리가 행성을 감싸 보이게 한다
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <g transform="translate(12 12) rotate(-22)">
+                  <path d="M -11 0 A 11 3.6 0 0 1 11 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+                  <circle r="6" fill="var(--star)" />
+                  <path d="M -11 0 A 11 3.6 0 0 0 11 0" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </g>
+              </svg>
+            )}
+            <span title={appTitle} style={{ fontFamily: 'var(--font-logo)', fontSize: '13px', fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }}>
+              {appTitle}
             </span>
           </div>
           <button
