@@ -161,6 +161,37 @@ def test_store_merges_concepts_by_alias_and_replaces_per_note(client):
     assert _count("SELECT COUNT(*) FROM concept_aliases WHERE norm = '임베딩'") == 0
 
 
+def _store_raw(note_id, nodes):
+    from db import get_conn
+    from services import graph_extraction as ge
+    graph = ge.parse_graph(json.dumps({"nodes": nodes, "edges": []}, ensure_ascii=False))
+    with get_conn() as conn:
+        ge.store_graph(conn, note_id, graph)
+
+
+def test_alias_does_not_merge_class_into_instance(client):
+    # 모델이 상위 분류(TTS)를 제품(Piper)의 동의어로 넣어도, 다른 노트의 'TTS' 분류는 따로 남는다
+    from db import get_conn
+    from services.graph_retrieval import match_seeds
+    a = _note(client, "A", "a")
+    b = _note(client, "B", "b")
+    _store_raw(a["id"], [{"name": "Piper", "kind": "instance", "aliases": ["TTS"]}])
+    _store_raw(b["id"], [{"name": "TTS", "kind": "class", "aliases": []}])
+    assert _count("SELECT COUNT(*) FROM concepts") == 2
+    assert _count("SELECT kind = 'instance' FROM concepts WHERE name = 'Piper'") == 1
+    with get_conn() as conn:
+        assert {h.name for h in match_seeds(conn, "TTS 뭐야").values()} == {"TTS"}
+
+
+def test_alias_still_merges_same_kind(client):
+    a = _note(client, "A", "a")
+    b = _note(client, "B", "b")
+    _store_raw(a["id"], [{"name": "Ollama", "kind": "instance", "aliases": ["올라마"]}])
+    _store_raw(b["id"], [{"name": "올라마", "kind": "instance", "aliases": []}])
+    assert _count("SELECT COUNT(*) FROM concepts") == 1
+    assert _count("SELECT COUNT(*) FROM note_concepts") == 2
+
+
 def test_process_note_calls_model_and_skips_unchanged(client, monkeypatch):
     from services import graph_extraction as ge
     n = _note(client, "RAG 정리", "RAG는 임베딩을 사용한다")

@@ -190,7 +190,9 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 - type은 아래 유형 중 설명에 가장 잘 맞는 하나 (literal은 생략). 더 구체적인 하위 유형이 맞으면 그것을 쓴다(예: 도구보다 데이터베이스):
 {_type_lines()}
 - weight: 3 = 노트의 중심 주제, 2 = 중요하게 다룸, 1 = 언급만 됨
-- aliases: 같은 대상을 가리키는 다른 표기(한글/영문, 약어, 풀네임). 없으면 빈 배열. literal은 빈 배열.
+- aliases: 완전히 같은 대상을 가리키는 다른 표기(한글/영문, 약어, 풀네임)만. 없으면 빈 배열. literal은 빈 배열.
+  상위 분류(Piper의 TTS), 하위 사례(LLM의 GPT), 비슷한 다른 대상(PowerHA의 VCS)은 aliases에 넣지 말고
+  별도 노드로 만들어 인스턴스이다/하위클래스이다/관련 관계로 잇는다.
 - 소프트웨어·기술·제품 이름은 널리 쓰이는 공식 영문 표기를 name으로 쓴다(예: 도커 → Docker, 올라마 → Ollama).
 - "방법", "코드", "문제", "설명", "예시" 같은 일반어는 노드로 넣지 않는다.
 
@@ -438,15 +440,22 @@ def _resolve_concept(conn, item: dict, note_id: str) -> str:
         return cid
     row = conn.execute("SELECT id FROM concepts WHERE norm = ?", (item["norm"],)).fetchone()
     if row is None:
+        # 동의어로 찾은 개념은 kind가 같을 때만 합친다 — 분류(class)와 구체 대상(instance)은
+        # 같은 대상일 수 없다. 모델이 상위·하위 개념을 동의어로 넣으면(Piper의 TTS) 다른 노트의
+        # 'TTS'가 Piper로 빨려 들어가고, 그 동의어가 또 다음 병합을 부르며 개념이 불어난다
         row = conn.execute(
-            "SELECT concept_id AS id FROM concept_aliases WHERE norm = ?", (item["norm"],)
+            "SELECT c.id FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id "
+            "WHERE a.norm = ? AND c.kind = ?",
+            (item["norm"], kind),
         ).fetchone()
     if row is None:
         for a in item["aliases"]:
+            an = norm_name(a)
             row = conn.execute(
-                "SELECT id FROM concepts WHERE norm = ? UNION ALL "
-                "SELECT concept_id FROM concept_aliases WHERE norm = ?",
-                (norm_name(a), norm_name(a)),
+                "SELECT id FROM concepts WHERE norm = ? AND kind = ? UNION ALL "
+                "SELECT c.id FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id "
+                "WHERE a.norm = ? AND c.kind = ?",
+                (an, kind, an, kind),
             ).fetchone()
             if row:
                 break
@@ -461,7 +470,14 @@ def _resolve_concept(conn, item: dict, note_id: str) -> str:
             "INSERT INTO concepts (id, name, norm, type, kind, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (cid, item["name"], item["norm"], item["type"], kind, _now()),
         )
-    # 동의어 등록 — 같은 동의어가 이미 다른 개념에 걸려 있으면 먼저 등록된 쪽을 유지
+    # 동의어 등록 — 같은 동의어가 이미 다른 개념에 걸려 있으면 먼저 등록된 쪽을 유지.
+    # 단 개념 자신의 이름은 남의 동의어보다 우선한다 ('TTS' 질문이 Piper가 아니라 TTS로 가게)
+    own = conn.execute("SELECT norm, name FROM concepts WHERE id = ?", (cid,)).fetchone()
+    conn.execute(
+        "INSERT INTO concept_aliases (norm, alias, concept_id) VALUES (?, ?, ?) "
+        "ON CONFLICT(norm) DO UPDATE SET alias = excluded.alias, concept_id = excluded.concept_id",
+        (own[0], own[1], cid),
+    )
     for a in [item["name"], *item["aliases"]]:
         an = norm_name(a)
         if not an:
