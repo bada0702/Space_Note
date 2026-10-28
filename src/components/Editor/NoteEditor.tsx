@@ -34,10 +34,10 @@ const defineThemes: BeforeMount = monacoApi => {
     base: 'vs',
     inherit: true,
     rules: [
-      { token: 'keyword', foreground: '8A5A0B', fontStyle: 'bold' },
+      { token: 'keyword', foreground: '1F5BB8', fontStyle: 'bold' },
       { token: 'strong', foreground: '16233A', fontStyle: 'bold' },
       { token: 'emphasis', fontStyle: 'italic' },
-      { token: 'string.link', foreground: '8A5A0B' },
+      { token: 'string.link', foreground: '1F5BB8' },
       { token: 'variable', foreground: '55627A' },
       { token: 'comment', foreground: '7A869C' },
     ],
@@ -46,9 +46,9 @@ const defineThemes: BeforeMount = monacoApi => {
       'editor.foreground': '#16233A',
       'editorLineNumber.foreground': '#AEB8C8',
       'editorLineNumber.activeForeground': '#55627A',
-      'editorCursor.foreground': '#8A5A0B',
-      'editor.selectionBackground': '#8A5A0B26',
-      'editor.inactiveSelectionBackground': '#8A5A0B14',
+      'editorCursor.foreground': '#1F5BB8',
+      'editor.selectionBackground': '#1F5BB826',
+      'editor.inactiveSelectionBackground': '#1F5BB814',
     },
   })
 }

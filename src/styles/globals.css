@@ -5,7 +5,7 @@
 /* ─────────────────────────────────────────────
    SpaceNote 토큰 — "성도(星圖)" 테마
    밤하늘 남색 바탕 + 별빛 금색 한 가지 강조색.
-   라이트 모드는 성도 인쇄본처럼 차가운 회청색 종이.
+   라이트 모드는 성도 인쇄본처럼 차가운 회청색 종이 + 파랑 강조색.
    ───────────────────────────────────────────── */
 :root {
   /* 라이트 — 성도 인쇄본 */
@@ -17,8 +17,8 @@
   --text-primary: #16233A;
   --text-secondary: #55627A;
   --text-tertiary: #7A869C;
-  --star: #8A5A0B;               /* 별빛 금색 (라이트에서는 대비 확보를 위해 짙게) */
-  --star-soft: rgba(138, 90, 11, 0.10);
+  --star: #1F5BB8;               /* 라이트 강조색 — 회청색 종이에 맞춘 파랑 (흰 바탕 대비 약 6:1) */
+  --star-soft: rgba(31, 91, 184, 0.10);
   --danger: #B42318;
   --accent-line: var(--star);
   --accent-primary: #16233A;
@@ -547,7 +547,7 @@ button.sn-atlas-item:hover { color: var(--text-primary); }
   height: 30px;
   font-size: var(--fs-sm);
   color: var(--star);
-  border: 1px solid rgba(233, 196, 106, 0.4);
+  border: 1px solid color-mix(in srgb, var(--star) 40%, transparent);  /* 테마 강조색을 따른다 */
   border-radius: 6px;
 }
 .sn-atlas-reset:hover { background: var(--star-soft); }
