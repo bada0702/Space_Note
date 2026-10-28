@@ -309,6 +309,16 @@ def test_many_expanded_concepts_do_not_outrank_direct_mention(client):
     assert notes[direct["id"]].score > notes[around["id"]].score
 
 
+def test_excerpt_finds_concept_by_alias(client):
+    # 개념 이름(Embedding)이 아니라 동의어(임베딩)로 적힌 노트도 그 위치를 발췌한다
+    content = "관계없는 서론 문장입니다. " * 200 + "\n\n임베딩 계산 방식은 이렇다."
+    n = _note(client, "벡터 메모", content)
+    _store(n["id"], [("Embedding", "기술", 3, ["임베딩"])])
+    r = client.get("/ai/retrieve", params={"q": "Embedding"}, headers=AUTH).json()
+    assert r[0]["id"] == n["id"]
+    assert "임베딩 계산 방식은 이렇다." in r[0]["excerpt"]
+
+
 def test_hub_concepts_are_not_expanded(client, monkeypatch):
     from db import get_conn
     from services import graph_retrieval

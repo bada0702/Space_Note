@@ -219,6 +219,19 @@ def path_terms(hit: ConceptHit) -> list[str]:
     return [hit.name, *[p[0] for p in reversed(hit.path)]]
 
 
+def aliases_of(conn, names: list[str]) -> list[str]:
+    """개념 이름들의 동의어 — 노트 본문에는 이름 대신 동의어('Embedding' → '임베딩')로 적혀 있을 수 있다."""
+    if not names:
+        return []
+    ph = ",".join("?" * len(names))
+    rows = conn.execute(
+        f"SELECT DISTINCT a.alias AS alias FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id "
+        f"WHERE c.name IN ({ph})",
+        names,
+    ).fetchall()
+    return [r["alias"] for r in rows]
+
+
 def graph_note_scores(conn, query: str, category_id: str | None = None, exclude_id: str | None = None,
                       context_note_id: str | None = None) -> dict[str, NoteHit]:
     seeds = match_seeds(conn, query)

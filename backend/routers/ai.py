@@ -1,6 +1,7 @@
 import json
 import math
 import re
+from collections import Counter
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -15,6 +16,8 @@ router = APIRouter()
 
 RAG_LIMIT = 5
 RAG_EXCERPT = 1200
+RAG_PASSAGE = 300
+RAG_GAP = "\n…\n"
 RAG_MAX_KEYWORDS = 8
 GRAPH_WEIGHT = 0.6
 KEYWORD_WEIGHT = 0.4
@@ -101,11 +104,76 @@ def _query_keywords(text: str) -> list[str]:
     return keywords[:RAG_MAX_KEYWORDS]
 
 
-def _excerpt(content: str, keywords: list[str]) -> str:
+def _passages(content: str) -> list[tuple[int, int]]:
+    """본문을 RAG_PASSAGE자 안팎의 구간 (시작, 끝)으로 나눈다.
+
+    빈 줄 기준 문단을 이어 붙인다 — AI 대화 기록은 문단이 아주 짧아 문단 하나로는 맥락이 없다.
+    """
+    spans = []
+    for m in re.finditer(r"\S.*?(?=\n\s*\n|\Z)", content, re.S):
+        for s in range(m.start(), m.end(), RAG_PASSAGE):
+            spans.append((s, min(s + RAG_PASSAGE, m.end())))
+    merged: list[tuple[int, int]] = []
+    for s, e in spans:
+        if merged and e - merged[-1][0] <= RAG_PASSAGE:
+            merged[-1] = (merged[-1][0], e)
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def _excerpt(content: str, terms: list[str]) -> str:
+    """질문 관련어가 든 구간들을 골라 RAG_EXCERPT자 안에 담는다.
+
+    노트 앞부분 한 곳만 자르면 긴 노트(평균 9천 자)는 대부분을 놓친다. 아직 담지 않은 관련어를
+    많이 가진 구간부터 고르고, 남는 분량은 고른 구간의 다음 구간(답변이 이어지는 곳)으로 채운다.
+    """
+    passages = _passages(content)
     lower = content.casefold()
-    hits = [p for p in (lower.find(k.casefold()) for k in keywords if k) if p >= 0]
-    start = max(0, min(hits) - RAG_EXCERPT // 4) if hits else 0
-    return content[start:start + RAG_EXCERPT]
+    words = {t.casefold() for t in terms if len(t) >= 2}
+    candidates = {}
+    for i, (s, e) in enumerate(passages):
+        found = {w for w in words if w in lower[s:e]}
+        if found:
+            candidates[i] = found
+    if not candidates:
+        return content[:RAG_EXCERPT]
+
+    picked: set[int] = set()
+    covered: Counter = Counter()
+    used = 0
+    while candidates:
+        # 같은 단어만 반복되는 구간보다 새 단어를 담은 구간을 먼저, 동점이면 앞 구간
+        i = max(candidates, key=lambda j: (sum(1 / (1 + covered[w]) for w in candidates[j]), -j))
+        found = candidates.pop(i)
+        size = passages[i][1] - passages[i][0] + len(RAG_GAP)
+        if used + size <= RAG_EXCERPT:
+            picked.add(i)
+            covered.update(found)
+            used += size
+    grew = True
+    while grew:
+        grew = False
+        for i in sorted(picked):
+            nxt = i + 1
+            if nxt < len(passages) and nxt not in picked:
+                size = passages[nxt][1] - passages[nxt][0] + len(RAG_GAP)
+                if used + size <= RAG_EXCERPT:
+                    picked.add(nxt)
+                    used += size
+                    grew = True
+
+    parts: list[str] = []
+    prev = None
+    for i in sorted(picked):
+        s, e = passages[i]
+        text = content[s:e]
+        if prev is not None and prev == i - 1:
+            parts[-1] += "\n\n" + text  # 이어지는 구간은 생략 표시 없이 붙인다
+        else:
+            parts.append(text)
+        prev = i
+    return RAG_GAP.join(parts)
 
 
 def _keyword_scores(conn, keywords: list[str], scope: str, scope_params: list) -> dict:
@@ -200,7 +268,8 @@ def _retrieve_notes(conn, query: str, category_id, exclude_id, fallback_recent: 
             if nid in graph:
                 hit = graph[nid].concept
                 reason = graph_retrieval.format_path(hit)
-                terms = [*graph_retrieval.path_terms(hit), *keywords]
+                names = graph_retrieval.path_terms(hit)
+                terms = [*names, *graph_retrieval.aliases_of(conn, names), *keywords]
             else:
                 reason = f"키워드 '{kw[nid][1]}' 일치"
                 terms = keywords

@@ -316,3 +316,16 @@ def test_ollama_uses_base_url_from_settings(client, monkeypatch):
     from services import ollama_client
     client.patch("/ai/settings", json={"ollama_base_url": "http://ollama.test:11434/"}, headers=AUTH)
     assert ollama_client.base_url() == "http://ollama.test:11434"
+
+
+def test_rag_excerpt_collects_separate_passages(client):
+    # 질문 단어가 노트 곳곳에 흩어져 있으면 한 구간이 아니라 각 구간을 골라 담는다
+    from routers import ai as ai_router
+    filler = "\n\n".join(["관계없는 서론 문장입니다."] * 150)
+    content = f"{filler}\n\n알파 설정은 이렇게 한다.\n\n{filler}\n\n베타 설정은 저렇게 한다.\n\n{filler}"
+    client.post("/notes", json={"title": "흩어진 노트", "content": content}, headers=AUTH)
+
+    r = client.get("/ai/retrieve", params={"q": "알파 베타"}, headers=AUTH).json()
+    assert "알파 설정은 이렇게 한다." in r[0]["excerpt"]
+    assert "베타 설정은 저렇게 한다." in r[0]["excerpt"]
+    assert len(r[0]["excerpt"]) <= ai_router.RAG_EXCERPT + 20
