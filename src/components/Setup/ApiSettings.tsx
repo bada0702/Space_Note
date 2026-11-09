@@ -112,6 +112,20 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
   const setField = (k: keyof AISettings, v: string) =>
     setForm(f => ({ ...f, [k]: v }))
 
+  // 저장 버튼은 빈칸을 '기존 키 유지'로 보내지 않으므로, 삭제는 빈 문자열을 바로 저장한다
+  const deleteKey = async (key: 'anthropic_api_key' | 'openai_api_key' | 'google_api_key', label: string) => {
+    if (!confirm(`${label}를 삭제할까요?\n서버 .env에 같은 키가 있으면 그 키는 계속 사용됩니다.`)) return
+    try {
+      await aiApi.patchSettings({ [key]: '' })
+      await loadSettings()
+      refreshSavedKeys()
+      setForm(f => ({ ...f, [key]: '' }))
+    } catch (e) {
+      console.error('api key delete failed:', e)
+      alert('키를 삭제하지 못했습니다. 백엔드가 실행 중인지 확인하세요.')
+    }
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -305,9 +319,23 @@ export function ApiSettings({ onClose }: { onClose: () => void }) {
               <label htmlFor={key} style={labelStyle}>
                 {label}
                 {savedKeys[key] && (
-                  <span style={{ color: '#2f9e44', marginLeft: 6, textTransform: 'none' }}>
-                    ✓ 저장됨
-                  </span>
+                  <>
+                    <span style={{ color: '#2f9e44', marginLeft: 6, textTransform: 'none' }}>
+                      ✓ 저장됨
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteKey(key, label)}
+                      aria-label={`${label} 삭제`}
+                      style={{
+                        marginLeft: 8, padding: '0 6px', fontSize: 11, textTransform: 'none',
+                        color: 'var(--danger)', background: 'none',
+                        border: '1px solid var(--danger)', borderRadius: 4, cursor: 'pointer',
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </>
                 )}
               </label>
               <input
