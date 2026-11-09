@@ -4,19 +4,16 @@ import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { notesApi } from '../../api/notesApi'
 import { aiApi } from '../../api/aiApi'
-import { formatRelation } from '../../utils/ontology'
+import { EXPECTED_SECONDS, ProgressBar, etaText, useEstimatedProgress } from '../common/Progress'
+import type { AnalyzeProgress, GraphStatus, Note } from '../../types'
 
-// apiFetch 오류("API 400: {"detail": "..."}")에서 서버가 준 안내 문구를 꺼낸다
-function errorDetail(e: unknown): string {
-  const msg = String((e as Error)?.message ?? '')
-  try { return JSON.parse(msg.slice(msg.indexOf('{'))).detail ?? '' } catch { return '' }
-}
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const pct = (done: number, total: number) => (total > 0 ? (done / total) * 100 : 0)
 
 export function DiscoveriesPanel() {
   const { discoveries, loading, loadDiscoveries, setPanel } = useSearchStore()
   const { activeNote, openNote, setTab, fetchNotes } = useNotesStore()
   const { categories } = useCategoriesStore()
-  const [analyzing, setAnalyzing] = useState(false)
   const [notice, setNotice] = useState('')
   const alive = useRef(true)
 
@@ -29,90 +26,149 @@ export function DiscoveriesPanel() {
     loadDiscoveries(activeNote?.id)
   }, [activeNote?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 내용 있는 노트의 pending이 모두 풀릴 때까지 폴링하며 진행 상태 안내
-  const pollUntilDone = async (onProgress: (completed: number, total: number) => void): Promise<boolean> => {
-    for (let i = 0; i < 180 && alive.current; i++) {
-      const list = await notesApi.list()
-      const total = list.filter(n => n.word_count > 0).length
-      const pending = list.filter(n => n.analysis_status === 'pending' && n.word_count > 0).length
-      const completed = total - pending
+  const errorNotice = (e: any) =>
+    String(e?.message).includes('API 400')
+      ? 'AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)'
+      : '분석 요청에 실패했습니다'
 
-      onProgress(completed, total)
+  // ── 일괄 분석: 서버 상태를 2초마다 읽어 키워드·지식 그래프 진행을 따로 보여 준다 ──
+  // 패널을 닫았다 열어도 돌고 있는 작업을 이어서 보여 주고, 끝날 때까지 확인을 멈추지 않는다
+  const [bulk, setBulk] = useState<{ keyword: AnalyzeProgress | null; graph: GraphStatus | null } | null>(null)
+  const [rates, setRates] = useState<{ keyword: number | null; graph: number | null }>({ keyword: null, graph: null })
+  const [starting, setStarting] = useState(false)
+  const watching = useRef(false)
 
-      if (pending === 0) return true
-      await new Promise(r => setTimeout(r, 2000)) // 2초 주기 체크
+  const watchBulk = async (announce: boolean) => {
+    if (watching.current) return
+    watching.current = true
+    let seen = announce
+    let keywordSeen = false
+    let first: { t: number; keyword: number; graph: number } | null = null
+    setRates({ keyword: null, graph: null })
+    try {
+      while (alive.current) {
+        const [k, g] = await Promise.all([
+          notesApi.analyzeProgress().catch(() => null),
+          aiApi.getGraphStatus().catch(() => null),
+        ])
+        const kRunning = !!k?.running
+        const gRunning = !!g && g.pending > 0
+        keywordSeen ||= kRunning
+        if (!kRunning && !gRunning) {
+          setBulk(null)
+          if (seen) {
+            await fetchNotes()
+            await loadDiscoveries(useNotesStore.getState().activeNote?.id)
+            const failed = (keywordSeen ? k?.failed ?? 0 : 0) + (g?.failed ?? 0)
+            setNotice(failed > 0
+              ? `분석 완료 — ${failed}개 실패 (설정 › 지식 그래프에서 이유를 확인하세요)`
+              : '모든 노트의 분석 및 항로 연결이 완료되었습니다!')
+          }
+          return
+        }
+        seen = true
+        // 처리 속도(분당)는 지켜보기 시작한 뒤의 실제 처리 수로 잰다
+        const now = performance.now()
+        const kDone = k ? k.done + k.failed : 0
+        const gDone = g ? g.total - g.pending : 0
+        if (!first) first = { t: now, keyword: kDone, graph: gDone }
+        const minutes = (now - first.t) / 60000
+        if (minutes >= 0.25) {
+          setRates({ keyword: (kDone - first.keyword) / minutes, graph: (gDone - first.graph) / minutes })
+        }
+        setBulk({ keyword: keywordSeen ? k : null, graph: gRunning ? g : null })
+        await sleep(2000)
+      }
+    } finally {
+      watching.current = false
     }
-    return false
   }
 
-  const runAnalyze = async (call: () => Promise<{ queued: number }>) => {
+  useEffect(() => {
+    watchBulk(false)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runBulk = async (call: () => Promise<{ queued: number }>) => {
     setNotice('')
-    setAnalyzing(true)
+    setStarting(true)
     try {
       const { queued } = await call()
-      if (queued === 0) {
+      if (queued === 0 && !watching.current) {
         setNotice('분석할 노트가 없습니다')
         return
       }
-      setNotice(`분석 준비 중...`)
-      
-      const done = await pollUntilDone((completed, total) => {
-        setNotice(`분석 진행 중: 전체 ${total}개 중 ${completed}개 완료 (${completed}/${total}개)`)
-      })
-      
-      if (!alive.current) return
-      await fetchNotes()
-      await loadDiscoveries(activeNote?.id)
-      
-      if (!done) {
-        setNotice('아직 분석이 진행 중입니다 — 잠시 후 새로고침을 눌러주세요')
-        return
-      }
-      const failed = useNotesStore.getState().notes
-        .filter(n => n.analysis_status === 'failed' && n.word_count > 0).length
-      setNotice(
-        failed > 0
-          ? `${failed}개 분석 실패 — 잠시 후 다시 시도하세요`
-          : '모든 노트의 분석 및 항로 연결이 완료되었습니다!',
-      )
+      watchBulk(true)
     } catch (e: any) {
-      setNotice(
-        String(e?.message).includes('API 400')
-          ? 'AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)'
-          : '분석 요청에 실패했습니다',
-      )
+      setNotice(errorNotice(e))
     } finally {
-      if (alive.current) setAnalyzing(false)
+      if (alive.current) setStarting(false)
     }
   }
 
-  // AI 항로분석: 온톨로지 추출은 백그라운드 작업자가 분당 몇 개씩 처리하므로 대기 개수로 진행을 보여 준다
-  const runAiAnalyze = async (call: () => Promise<{ queued: number }>) => {
+  // AI 분석은 키워드(채팅 모델)와 지식 그래프(추출 모델)를 함께 돌린다 — 한쪽만 되어도 진행
+  const runAiBulk = () =>
+    runBulk(async () => {
+      const [k, g] = await Promise.allSettled([notesApi.analyzeAll(), aiApi.analyzeGraphMissing()])
+      if (k.status === 'rejected' && g.status === 'rejected') throw k.reason
+      const queued = (r: typeof k) => (r.status === 'fulfilled' ? r.value.queued : 0)
+      return { queued: queued(k) + queued(g) }
+    })
+
+  // ── 노트 하나 분석: 실제 진행률을 알 수 없어 예상 시간 기준 %를 보여 준다 ──
+  const [single, setSingle] = useState<{ label: string; expected: number } | null>(null)
+  const singlePercent = useEstimatedProgress(!!single, single?.expected ?? 10)
+
+  const runSingle = async (
+    label: string,
+    expected: number,
+    call: () => Promise<Array<'keyword' | 'graph'>>,  // 실제로 시작된 작업
+  ) => {
+    if (!activeNote) return
+    const id = activeNote.id
     setNotice('')
-    setAnalyzing(true)
+    setSingle({ label, expected })
     try {
-      const { queued } = await call()
-      if (queued === 0) {
-        setNotice('새로 분석할 노트가 없습니다 — 모든 노트의 온톨로지가 최신입니다')
-        return
+      const started = await call()
+      const pending = (n: Note) =>
+        (started.includes('keyword') && n.analysis_status === 'pending') ||
+        (started.includes('graph') && n.graph_status === 'pending')
+      let note = await notesApi.get(id)
+      for (let i = 0; i < 120 && alive.current && pending(note); i++) {
+        await sleep(1000)
+        note = await notesApi.get(id)
       }
-      while (alive.current) {
-        const s = await aiApi.getGraphStatus()
-        if (s.pending === 0) {
-          await loadDiscoveries(activeNote?.id)
-          setNotice(s.failed > 0
-            ? `온톨로지 분석 완료 — ${s.failed}개 실패 (설정 › 지식 그래프에서 다시 시도)`
-            : '온톨로지 분석과 항로 연결이 완료되었습니다!')
-          return
-        }
-        setNotice(`온톨로지 분석 중: 대기 ${s.pending}개 · 약 ${s.eta_minutes}분 남음 — 패널을 닫아도 계속 분석합니다`)
-        await new Promise(r => setTimeout(r, 5000))
-      }
-    } catch (e) {
-      setNotice(errorDetail(e) || '분석 요청에 실패했습니다')
+      if (!alive.current) return
+      await fetchNotes()
+      await loadDiscoveries(useNotesStore.getState().activeNote?.id)
+      if (pending(note)) setNotice('아직 분석이 진행 중입니다 — 잠시 후 새로고침을 눌러주세요')
+      else if (note.analysis_status === 'failed' || note.graph_status === 'failed')
+        setNotice(note.graph_error ? `분석 실패: ${note.graph_error}` : '분석 실패 — 잠시 후 다시 시도하세요')
+      else setNotice('이 노트의 분석과 항로 연결이 완료되었습니다!')
+    } catch (e: any) {
+      setNotice(errorNotice(e))
     } finally {
-      if (alive.current) setAnalyzing(false)
+      if (alive.current) setSingle(null)
     }
+  }
+
+  const runAiSingle = (id: string) =>
+    runSingle('AI 분석 (이 노트)', EXPECTED_SECONDS.graphNote, async () => {
+      const [k, g] = await Promise.allSettled([notesApi.analyzeOne(id), aiApi.analyzeGraphNote(id)])
+      if (k.status === 'rejected' && g.status === 'rejected') throw k.reason
+      return [...(k.status === 'fulfilled' ? ['keyword' as const] : []), ...(g.status === 'fulfilled' ? ['graph' as const] : [])]
+    })
+
+  const runPythonSingle = (id: string) =>
+    runSingle('자동 분석 (이 노트)', EXPECTED_SECONDS.pythonNote, async () => {
+      await notesApi.analyzeOnePython(id)
+      return ['keyword']
+    })
+
+  const analyzing = starting || !!bulk || !!single
+
+  const bulkDetail = (done: number, total: number, rate: number | null, failed: number) => {
+    const eta = etaText(total - done, rate)
+    return `${done}/${total} (${Math.round(pct(done, total))}%)${eta ? ` · ${eta}` : ''}${failed ? ` · 실패 ${failed}` : ''}`
   }
 
   const catColor = (id: string | null) =>
@@ -139,7 +195,7 @@ export function DiscoveriesPanel() {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* 자동항로분석 (Python) */}
           <button
-            onClick={() => runAnalyze(() => notesApi.analyzeAllPython())}
+            onClick={() => runBulk(notesApi.analyzeAllPython)}
             disabled={analyzing}
             style={{
               fontSize: 12, color: 'var(--text-primary)',
@@ -154,7 +210,7 @@ export function DiscoveriesPanel() {
 
           {/* AI 항로분석 */}
           <button
-            onClick={() => runAiAnalyze(() => notesApi.analyzeAll())}
+            onClick={runAiBulk}
             disabled={analyzing}
             style={{
               fontSize: 12, color: 'var(--text-primary)',
@@ -162,7 +218,7 @@ export function DiscoveriesPanel() {
               borderRadius: 4, padding: '3px 10px',
               cursor: analyzing ? 'wait' : 'pointer', opacity: analyzing ? 0.6 : 1,
             }}
-            title="LLM으로 노트를 Class·Instance·Literal 온톨로지로 분석하고, 개념 사이의 관계로 항로를 잇습니다."
+            title="거대언어모델(LLM)로 키워드와 지식 그래프(개념·관계)를 추출해, 개념을 공유하거나 관계로 이어진 노트를 항로로 찾습니다."
           >
             ✦ AI 항로분석
           </button>
@@ -171,7 +227,7 @@ export function DiscoveriesPanel() {
             <>
               {/* 이 노트 자동 분석 */}
               <button
-                onClick={() => runAnalyze(() => notesApi.analyzeOnePython(activeNote.id))}
+                onClick={() => runPythonSingle(activeNote.id)}
                 disabled={analyzing}
                 style={{
                   fontSize: 12, color: 'var(--text-secondary)',
@@ -185,7 +241,7 @@ export function DiscoveriesPanel() {
 
               {/* 이 노트 AI 분석 */}
               <button
-                onClick={() => runAiAnalyze(() => notesApi.analyzeOne(activeNote.id))}
+                onClick={() => runAiSingle(activeNote.id)}
                 disabled={analyzing}
                 style={{
                   fontSize: 12, color: 'var(--text-secondary)',
@@ -201,7 +257,7 @@ export function DiscoveriesPanel() {
 
           <button
             onClick={() => loadDiscoveries(activeNote?.id)}
-            disabled={analyzing}
+            disabled={starting || !!single} // 일괄 분석은 오래 걸리므로 도중에도 새로고침으로 중간 결과를 본다
             style={{
               fontSize: 12, color: 'var(--text-secondary)',
               background: 'var(--bg-input)', border: '1px solid var(--border)',
@@ -212,6 +268,28 @@ export function DiscoveriesPanel() {
             ↺ 새로고침
           </button>
         </div>
+        {(bulk || single) && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {single && (
+              <ProgressBar label={single.label} percent={singlePercent} detail={`약 ${Math.round(singlePercent)}% (예상)`} />
+            )}
+            {bulk?.keyword && (
+              <ProgressBar
+                label={bulk.keyword.kind === 'python' ? '키워드 (파이썬)' : '키워드'}
+                percent={pct(bulk.keyword.done + bulk.keyword.failed, bulk.keyword.total)}
+                detail={bulkDetail(bulk.keyword.done + bulk.keyword.failed, bulk.keyword.total, rates.keyword, bulk.keyword.failed)}
+              />
+            )}
+            {bulk?.graph && (
+              <ProgressBar
+                label="지식 그래프"
+                percent={pct(bulk.graph.total - bulk.graph.pending, bulk.graph.total)}
+                detail={bulkDetail(bulk.graph.total - bulk.graph.pending, bulk.graph.total,
+                  rates.graph || bulk.graph.rate_per_minute, bulk.graph.failed)}
+              />
+            )}
+          </div>
+        )}
         {notice && (
           <div style={{ marginTop: 6, fontSize: 12, color: 'var(--accent-line)' }}>
             {notice}
@@ -259,32 +337,27 @@ export function DiscoveriesPanel() {
                 marginLeft: 'auto', fontSize: 12,
                 color: 'var(--accent-line)', fontWeight: 600,
               }}>
-                {d.kind === 'ontology' ? `관계 ${d.relations.length}` : `${d.shared_count}개 공통`}
+                {d.shared_count}개 공통
               </span>
             </div>
-            {d.kind === 'ontology' ? (
+            {(d.shared_concepts.length > 0 || d.shared_entities.length > 0) && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
-                {d.relations.map(r => {
-                  const text = formatRelation(r)
-                  return (
-                    <span
-                      key={text}
-                      style={{
-                        fontSize: 12, padding: '1px 6px',
-                        background: 'var(--bg-input)', borderRadius: 10,
-                        color: '#7dd3fc', border: '1px solid var(--border)',
-                      }}
-                    >
-                      {text}
-                    </span>
-                  )
-                })}
-              </div>
-            ) : d.shared_entities.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, paddingLeft: 12 }}>
-                {d.shared_entities.map(ent => (
+                {d.shared_concepts.map(c => (
                   <span
-                    key={ent}
+                    key={`c:${c}`}
+                    title="지식 그래프 공유 개념"
+                    style={{
+                      fontSize: 12, padding: '1px 6px',
+                      background: 'var(--bg-input)', borderRadius: 10,
+                      color: 'var(--accent-line)', border: '1px solid var(--accent-line)',
+                    }}
+                  >
+                    {c}
+                  </span>
+                ))}
+                {d.shared_entities.filter(ent => !d.shared_concepts.includes(ent)).map(ent => (
+                  <span
+                    key={`k:${ent}`}
                     style={{
                       fontSize: 12, padding: '1px 6px',
                       background: 'var(--bg-input)', borderRadius: 10,
@@ -292,6 +365,20 @@ export function DiscoveriesPanel() {
                     }}
                   >
                     {ent}
+                  </span>
+                ))}
+              </div>
+            )}
+            {d.relations.length > 0 && (
+              <div style={{ paddingLeft: 12, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {d.relations.map(rel => (
+                  <span key={rel} style={{ fontSize: 11, color: 'var(--text-secondary)', opacity: 0.85 }}>
+                    {rel}
+                    {d.evidence[rel] && (
+                      <span style={{ display: 'block', paddingLeft: 10, fontStyle: 'italic', opacity: 0.8 }}>
+                        “{d.evidence[rel]}”
+                      </span>
+                    )}
                   </span>
                 ))}
               </div>

@@ -5,6 +5,7 @@ import { notesApi } from '../../api/notesApi'
 import { searchApi } from '../../api/searchApi'
 import { aiApi } from '../../api/aiApi'
 import type { EditorTab } from '../../types'
+import { EXPECTED_SECONDS, ProgressBar, useEstimatedProgress } from '../common/Progress'
 
 export function EditorTabs() {
   const { activeNote, activeTab, setTab, setStarMapFilter, deleteNote, renameNote, toggleFavorite, saveNote } = useNotesStore()
@@ -14,6 +15,9 @@ export function EditorTabs() {
   const [routeNotice, setRouteNotice] = useState('')
   const [summaryBusy, setSummaryBusy] = useState(false)
   const [summary, setSummary] = useState<string | null>(null)
+  // 단건 LLM 호출이라 실제 진행률을 알 수 없어 예상 시간 기준 %로 보여 준다
+  const routePercent = useEstimatedProgress(routeBusy, EXPECTED_SECONDS.graphNote)
+  const summaryPercent = useEstimatedProgress(summaryBusy, EXPECTED_SECONDS.summarize)
 
   // activeNote가 바뀌면 제목 동기화
   useEffect(() => {
@@ -30,26 +34,34 @@ export function EditorTabs() {
 
   if (!activeNote) return null
 
-  // 파이썬 엔진으로 이 노트의 키워드·태그를 다시 뽑는다 — 공유 키워드가 생기면 성도 항로가 자동으로 이어진다
+  // 지식 그래프(개념·관계)를 다시 뽑는다 — 공유 개념이나 개념 간 관계가 있으면 성도 항로가 이어진다.
+  // Google 키가 없으면 파이썬 키워드 추출로 대신한다 (AI 키워드를 덮어쓰므로 그래프가 될 때는 건드리지 않는다)
   const handleRouteAnalyze = async () => {
     const id = activeNote.id
     setRouteBusy(true)
-    setRouteNotice('항로 분석 중...')
+    setRouteNotice('')
     try {
-      await notesApi.analyzeOnePython(id)
+      const useGraph = await aiApi.analyzeGraphNote(id).then(() => true, () => false)
+      if (!useGraph) await notesApi.analyzeOnePython(id)
+      const statusOf = (n: { analysis_status: string; graph_status?: string }) =>
+        useGraph ? n.graph_status : n.analysis_status
       let status = 'pending'
-      for (let i = 0; i < 30 && status === 'pending'; i++) {
+      let graphError: string | null | undefined
+      for (let i = 0; i < 90 && status === 'pending'; i++) {
         await new Promise(r => setTimeout(r, 1000))
-        status = (await notesApi.get(id)).analysis_status
+        const note = await notesApi.get(id)
+        status = statusOf(note) ?? 'failed'
+        graphError = note.graph_error
       }
       if (useNotesStore.getState().activeNote?.id !== id) return
       if (status === 'pending') setRouteNotice('분석이 아직 진행 중입니다')
-      else if (status === 'failed') setRouteNotice('항로 분석 실패')
+      else if (status === 'failed') setRouteNotice(useGraph && graphError ? `항로 분석 실패: ${graphError}` : '항로 분석 실패')
       else {
         // 성도와 같은 기준(노트당 상한 적용)으로 이 노트에 이어진 항로 수를 센다
-        const routes = await searchApi.discoveryRoutes()
-        const linked = routes.filter(r => r.note_a === id || r.note_b === id).length
-        setRouteNotice(linked ? `항로 ${linked}개 연결됨` : '연결할 노트를 찾지 못했습니다')
+        const routes = (await searchApi.discoveryRoutes()).filter(r => r.note_a === id || r.note_b === id)
+        const byGraph = routes.filter(r => r.shared_concepts.length || r.relations.length).length
+        const suffix = useGraph ? ` (개념·관계 ${byGraph}개)` : ' (키워드 기준 — Google API 키 없음)'
+        setRouteNotice(routes.length ? `항로 ${routes.length}개 연결됨${suffix}` : '연결할 노트를 찾지 못했습니다')
       }
     } catch {
       setRouteNotice('항로 분석 요청 실패')
@@ -62,7 +74,7 @@ export function EditorTabs() {
   const handleSummarize = async () => {
     const id = activeNote.id
     setSummaryBusy(true)
-    setRouteNotice('AI 요약 중...')
+    setRouteNotice('')
     try {
       const { summary } = await aiApi.summarizeNote(id)
       if (useNotesStore.getState().activeNote?.id !== id) return
@@ -215,7 +227,13 @@ export function EditorTabs() {
 
       {/* 노트 동작 */}
       <div className="flex items-center gap-2">
-        {routeNotice && (
+        {routeBusy && (
+          <ProgressBar label="⟡ 항로 분석" percent={routePercent} detail={`약 ${Math.round(routePercent)}% (예상)`} />
+        )}
+        {summaryBusy && (
+          <ProgressBar label="✦ AI 요약" percent={summaryPercent} detail={`약 ${Math.round(summaryPercent)}% (예상)`} />
+        )}
+        {routeNotice && !routeBusy && !summaryBusy && (
           <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-tertiary)' }}>{routeNotice}</span>
         )}
         <button
@@ -231,7 +249,7 @@ export function EditorTabs() {
           className="sn-btn"
           onClick={handleRouteAnalyze}
           disabled={routeBusy}
-          title="이 노트의 키워드·태그를 분석해 같은 키워드를 가진 노트와 항로로 연결합니다"
+          title="이 노트의 개념과 관계를 지식 그래프로 분석해, 개념을 공유하거나 관계로 이어진 노트와 항로로 연결합니다"
           style={{ cursor: routeBusy ? 'wait' : undefined, opacity: routeBusy ? 0.6 : 1 }}
         >
           ⟡ 항로 분석

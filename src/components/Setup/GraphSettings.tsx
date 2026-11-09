@@ -79,6 +79,13 @@ export function GraphSettings() {
       {status && status.pending > 0 && (
         <p className="sn-graph-desc">분석 중 — 남은 시간 약 {status.eta_minutes}분</p>
       )}
+      {status?.failures && status.failures.length > 0 && (
+        <ul className="sn-graph-failures">
+          {status.failures.map(f => (
+            <li key={f.id}><span>{f.title}</span> — {f.error ?? '이유 미기록 (다시 시도하면 기록됩니다)'}</li>
+          ))}
+        </ul>
+      )}
       {error && <p role="alert" className="sn-graph-error">{error}</p>}
 
       <label htmlFor="graph_model" className="sn-graph-head" style={{ marginTop: 12, display: 'block' }}>

@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { Note } from '../types'
+import type { AnalyzeProgress, Note } from '../types'
 
 export const notesApi = {
   list: (categoryId?: string, archived?: boolean) => {
@@ -34,4 +34,5 @@ export const notesApi = {
     apiFetch<{ queued: number }>('/notes/analyze-python', { method: 'POST' }),
   analyzeOnePython: (id: string) =>
     apiFetch<{ queued: number }>(`/notes/${id}/analyze-python`, { method: 'POST' }),
+  analyzeProgress: () => apiFetch<AnalyzeProgress>('/notes/analyze/progress'),
 }

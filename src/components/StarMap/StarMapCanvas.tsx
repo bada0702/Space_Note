@@ -9,8 +9,8 @@ import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore, setNoteVanisher } from '../../store/notesStore'
 import { constellationsApi } from '../../api/constellationsApi'
 import { searchApi } from '../../api/searchApi'
-import type { DiscoveryRoute, Note } from '../../types'
-import { formatRelation } from '../../utils/ontology'
+import ConstellationGraph from './ConstellationGraph'
+import type { DiscoveryRoute, Note, RoutePath } from '../../types'
 import { HEX_FADE, hexFadeFor, nearestPlanetDistance } from './nearFade'
 
 // ─────────────────────────────────────────────────────────────
@@ -39,12 +39,20 @@ interface NoteOrbit {
   rogue: boolean        // 떠돌이 행성 — 우주 팽창에 따라 궤도 반경이 커진다
 }
 
+type RouteKind = DiscoveryRoute['kind']
+
+// 근거 종류별 선 밝기 — 가산 혼합이라 배율이 곧 밝기다. 키워드 근거는 점선으로 그린다
+const ROUTE_KIND_GAIN: Record<RouteKind, number> = { relation: 2.2, concept: 1, keyword: 0.6, none: 1 }
+
 interface RouteVisual {
   aIdx: number
   bIdx: number
-  label: string // hover 문구 — 온톨로지 관계 경로 또는 공유 키워드
+  shared: string[]
+  evidence?: string     // 가장 강한 관계의 근거 문장
+  kind: RouteKind
   t: number
   dir: number
+  hidden?: boolean      // 사용자가 거부한 항로
 }
 
 // 각 카테고리 은하의 3D 방향 (거리는 computeStarPositions에서 정함)
@@ -76,11 +84,14 @@ const dustCount = (n: number) => Math.min(60, Math.max(6, Math.round(n * 0.3)))
 
 // bloom — 별이 겹쳐 밝아진 은하 중심부만 번지도록 임계값을 높게 둔다
 const BLOOM = { strength: 0.35, radius: 0.2, threshold: 0.9 }
-// 별자리 보기의 별·별자리 선 — 밝기를 1 넘게 올려 bloom 임계값을 넘겨야 노랗게 번지며 빛난다
-const CONSTELLATION_COLOR = new THREE.Color('#ffd84a')
-const CONSTELLATION_GLOW = 1.6
+// 별자리 보기의 노트·선 색 — bloom 임계값을 넘어 번지도록 1보다 큰 HDR 값
+const CONSTELLATION_GLOW = new THREE.Color(1.8, 1.4, 0.4)
 // 노트 삭제 연출: 점점 빨라지며 흰빛으로 반짝이다가(TWINKLE) 한 번 크게 번쩍이고 사라진다
-const VANISH = { twinkleMs: 1000, flashMs: 500, maxGlow: 4, flashGlow: 6 }
+const VANISH = {
+  twinkleMs: 1000, flashMs: 900, maxGlow: 4, flashGlow: 6,
+  // 폭발 크기는 화면 픽셀 기준 — 카메라가 멀어도 같은 크기로 보인다
+  glowPx: 60, burstPx: 170, ringPx: 260, debrisPx: 170, debris: 28, debrisSize: 5,
+}
 // 노트 보관 연출: 행성 옆에 블랙홀이 열리고(open) 행성이 나선으로 빨려 들어간 뒤(spiral) 번쩍이며 닫힌다(close)
 const BLACKHOLE = {
   openMs: 500, spiralMs: 1100, closeMs: 400,
@@ -431,6 +442,15 @@ export function StarMapCanvas() {
   // 성도 검색 — 고른 행성으로 카메라를 보낸다. 씬 안 flyTo는 ref로 연결한다
   const flyToRef = useRef<((id: string) => boolean) | null>(null)
   const pendingFlyRef = useRef<string | null>(null)
+  // 경로 탐색: Shift+클릭으로 고른 출발 노트와 결과. 강조선은 씬 안에서 그리고 해제 함수만 밖으로 꺼낸다
+  const [pathCard, setPathCard] = useState<
+    | { status: 'pick'; fromTitle: string }
+    | { status: 'loading' }
+    | { status: 'done'; path: RoutePath }
+    | { status: 'error'; message: string }
+    | null
+  >(null)
+  const clearPathRef = useRef<(() => void) | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchActive, setSearchActive] = useState(0)
@@ -930,19 +950,16 @@ export function StarMapCanvas() {
 
     const notePosAttr = new THREE.BufferAttribute(new Float32Array(orbits.length * 3), 3)
     notePosAttr.setUsage(THREE.DynamicDrawUsage)
-    // 별자리 보기에서는 보이는 노트가 모두 그 별자리의 별이므로 은하 색 대신 노란색으로 칠한다
-    // (팻말·이름표도 noteColors를 따른다). 버퍼에만 밝기를 곱해 별이 bloom으로 빛나게 한다.
+    // 별자리 보기에서는 보이는 노트가 모두 그 별자리의 별이므로 은하 색 대신 빛나는 금색으로 칠한다
     const isConstellation = starMapFilter?.type === 'constellation'
-    const routeBaseColors = noteColors.slice() // 미개척 항로는 별자리 선이 아니므로 원래 은하 색을 유지
-    if (isConstellation) noteColors.fill(CONSTELLATION_COLOR)
-    const noteGlow = isConstellation ? CONSTELLATION_GLOW : 1
+    if (isConstellation) noteColors.forEach(c => c.copy(CONSTELLATION_GLOW))
     const noteColAttr = new THREE.BufferAttribute(new Float32Array(orbits.length * 3), 3)
-    noteColors.forEach((c, i) => noteColAttr.setXYZ(i, c.r * noteGlow, c.g * noteGlow, c.b * noteGlow))
+    noteColors.forEach((c, i) => noteColAttr.setXYZ(i, c.r, c.g, c.b))
     const noteGeo = new THREE.BufferGeometry()
     noteGeo.setAttribute('position', notePosAttr)
     noteGeo.setAttribute('color', noteColAttr)
     const notePoints = new THREE.Points(noteGeo, new THREE.PointsMaterial({
-      size: 10, sizeAttenuation: false, vertexColors: true, map: starTex,
+      size: isConstellation ? 14 : 10, sizeAttenuation: false, vertexColors: true, map: starTex,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
     }))
     notePoints.frustumCulled = false // 점이 매 프레임 움직여 바운딩 구가 금방 낡는다
@@ -1010,7 +1027,7 @@ export function StarMapCanvas() {
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(constellationEdges.length * 6), 3))
       constellationLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
-        color: CONSTELLATION_COLOR.clone().multiplyScalar(CONSTELLATION_GLOW), transparent: true, opacity: 0.9,
+        color: CONSTELLATION_GLOW, transparent: true, opacity: 0.9,
         depthWrite: false, blending: THREE.AdditiveBlending,
       }))
       constellationLines.frustumCulled = false
@@ -1065,22 +1082,28 @@ export function StarMapCanvas() {
         const aIdx = noteIds.indexOf(route.note_a)
         const bIdx = noteIds.indexOf(route.note_b)
         if (aIdx < 0 || bIdx < 0) return // 필터로 숨겨진 노트
-        const onto = route.kind === 'ontology'
-        // 색은 종류와 관계없이 두 은하 색을 섞는다 — 온톨로지 관계는 hover 문구로 보여 준다
-        routeColors.push(routeBaseColors[aIdx].clone().lerp(routeBaseColors[bIdx], 0.5))
+        routeColors.push(noteColors[aIdx].clone().lerp(noteColors[bIdx], 0.5))
         lightPos.push(new THREE.Vector3())
         routeAlive.push(true)
-        const label = onto
-          ? route.relations.map(formatRelation).join(' · ')
-          : `공유: ${route.shared_entities.join(', ')}`
-        routeVisuals.push({ aIdx, bIdx, label, t: Math.random(), dir: 1 })
+        routeVisuals.push({
+          aIdx, bIdx, t: Math.random(), dir: 1,
+          shared: [...route.relations, ...route.shared_concepts, ...route.shared_entities],
+          evidence: route.relations.length ? route.evidence[route.relations[0]] : undefined,
+          kind: route.kind,
+        })
       })
       if (!routeVisuals.length) return
       // 모든 항로를 LineSegments 하나로 — draw call 1회
       const vertsPerRoute = ROUTE_SEGS * 2
       const col = new Float32Array(routeVisuals.length * vertsPerRoute * 3)
       routeColors.forEach((c, i) => {
-        for (let v = 0; v < vertsPerRoute; v++) col.set([c.r, c.g, c.b], (i * vertsPerRoute + v) * 3)
+        const { kind } = routeVisuals[i]
+        // 모르는 kind(다른 버전 백엔드)면 NaN 색이 bloom으로 화면 전체를 지우므로 기본 밝기로 그린다
+        const gain = ROUTE_KIND_GAIN[kind] ?? 1
+        for (let v = 0; v < vertsPerRoute; v++) {
+          const gap = kind === 'keyword' && Math.floor(v / 2) % 2 === 1
+          col.set(gap ? [0, 0, 0] : [c.r * gain, c.g * gain, c.b * gain], (i * vertsPerRoute + v) * 3)
+        }
       })
       const geo = new THREE.BufferGeometry()
       const posAttr = new THREE.BufferAttribute(new Float32Array(routeVisuals.length * vertsPerRoute * 3), 3)
@@ -1176,9 +1199,82 @@ export function StarMapCanvas() {
 
     // ── 삭제되는 행성 ── 스토어가 목록에서 빼기 전에 연출이 끝나길 기다린다
     interface BlackHole { sprite: THREE.Sprite; center: THREE.Vector3; right: THREE.Vector3; up: THREE.Vector3; r0: number }
-    const vanishing = new Map<number, { start: number; resolve: () => void; hole?: BlackHole }>()
+    // 삭제 폭발 — 빛무리·충격파 고리·파편. 삭제를 시작할 때 한 번 만들고 끝나면 해제한다
+    interface Burst { glow: THREE.Sprite; ring: THREE.Sprite; debris: THREE.Points; dirs: Float32Array; color: THREE.Color }
+    const vanishing = new Map<number, { start: number; resolve: () => void; hole?: BlackHole; burst?: Burst }>()
     const blackHoleTex = makeBlackHoleTexture()
-    disposables.push(blackHoleTex)
+    const ringTex = makeRadialTexture([[0, 0], [0.7, 0], [0.86, 1], [1, 0]], 128)
+    disposables.push(blackHoleTex, ringTex)
+    const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+    const burstRight = new THREE.Vector3()
+    const burstUp = new THREE.Vector3()
+    function makeBurst(i: number): Burst {
+      const k = i * 3
+      const color = new THREE.Color(noteBaseCol[k], noteBaseCol[k + 1], noteBaseCol[k + 2]).lerp(new THREE.Color(1, 1, 1), 0.5)
+      const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color, ...additive }))
+      const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTex, color, ...additive }))
+      ring.visible = false
+      // 파편은 화면과 평행한 면에서 사방으로 날아간다 — 방향과 속도는 여기서 한 번만 정한다
+      const dirs = new Float32Array(VANISH.debris * 3)
+      for (let d = 0; d < VANISH.debris; d++) {
+        const a = (d / VANISH.debris) * Math.PI * 2 + Math.random() * 0.4
+        dirs.set([Math.cos(a), Math.sin(a), 0.45 + Math.random() * 0.55], d * 3)
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(VANISH.debris * 3), 3))
+      const debris = new THREE.Points(geo, new THREE.PointsMaterial({
+        size: VANISH.debrisSize, sizeAttenuation: false, map: starTex, color, ...additive,
+      }))
+      debris.visible = false
+      debris.frustumCulled = false
+      glow.frustumCulled = false
+      ring.frustumCulled = false
+      scene.add(glow, ring, debris)
+      return { glow, ring, debris, dirs, color }
+    }
+    function disposeBurst(b: Burst) {
+      scene.remove(b.glow, b.ring, b.debris)
+      b.glow.material.dispose()
+      b.ring.material.dispose()
+      b.debris.geometry.dispose()
+      ;(b.debris.material as THREE.Material).dispose()
+    }
+    // 반짝임 → 폭발. 크기는 행성까지의 거리로 '1픽셀당 월드 크기'를 구해 픽셀 단위로 맞춘다
+    function updateBurst(b: Burst, center: THREE.Vector3, ms: number, flicker: number) {
+      const px = (2 * camera.position.distanceTo(center) * tanHalfFov) / (el!.clientHeight || 600)
+      b.glow.position.copy(center)
+      if (ms < VANISH.twinkleMs) {
+        const p = ms / VANISH.twinkleMs
+        b.glow.scale.setScalar(VANISH.glowPx * px * (0.4 + 0.6 * p * flicker))
+        b.glow.material.color.copy(b.color).multiplyScalar(1 + 2 * p * flicker)
+        return
+      }
+      const q = Math.min(1, (ms - VANISH.twinkleMs) / VANISH.flashMs)
+      const ease = 1 - Math.pow(1 - q, 3)
+      const fade = (1 - q) * (1 - q)
+      b.glow.scale.setScalar(VANISH.burstPx * px * (0.5 + 0.5 * ease))
+      b.glow.material.color.copy(b.color).multiplyScalar(4 * fade)
+      b.ring.visible = true
+      b.ring.position.copy(center)
+      b.ring.scale.setScalar(VANISH.ringPx * px * ease)
+      b.ring.material.color.copy(b.color).multiplyScalar(2.5 * (1 - q))
+      b.debris.visible = true
+      burstRight.setFromMatrixColumn(camera.matrixWorld, 0)
+      burstUp.setFromMatrixColumn(camera.matrixWorld, 1)
+      const attr = b.debris.geometry.getAttribute('position') as THREE.BufferAttribute
+      for (let d = 0; d < VANISH.debris; d++) {
+        const r = VANISH.debrisPx * px * b.dirs[d * 3 + 2] * ease
+        attr.setXYZ(
+          d,
+          center.x + (burstRight.x * b.dirs[d * 3] + burstUp.x * b.dirs[d * 3 + 1]) * r,
+          center.y + (burstRight.y * b.dirs[d * 3] + burstUp.y * b.dirs[d * 3 + 1]) * r,
+          center.z + (burstRight.z * b.dirs[d * 3] + burstUp.z * b.dirs[d * 3 + 1]) * r,
+        )
+      }
+      attr.needsUpdate = true
+      ;(b.debris.material as THREE.PointsMaterial).color.copy(b.color).multiplyScalar(2 * (1 - q))
+    }
     setNoteVanisher((id, effect) => new Promise<void>(resolve => {
       const i = noteIds.indexOf(id)
       if (i < 0 || !noteAlive[i]) return resolve() // 필터·타임라인으로 안 보이는 행성은 연출 없이 바로
@@ -1194,7 +1290,7 @@ export function StarMapCanvas() {
         scene.add(sprite)
         hole = { sprite, center: sprite.position.clone(), right, up, r0 }
       }
-      vanishing.set(i, { start: performance.now(), resolve, hole })
+      vanishing.set(i, { start: performance.now(), resolve, hole, burst: hole ? undefined : makeBurst(i) })
     }))
     function finishVanish(i: number) {
       const v = vanishing.get(i)
@@ -1203,6 +1299,7 @@ export function StarMapCanvas() {
         scene.remove(v.hole.sprite)
         v.hole.sprite.material.dispose()
       }
+      if (v.burst) disposeBurst(v.burst)
       vanishing.delete(i)
       v.resolve()
     }
@@ -1253,10 +1350,11 @@ export function StarMapCanvas() {
         const ms = now - v.start
         let glow: number
         let whiten: number
+        const s = ms / 1000
+        // 주파수가 점점 올라가는 반짝임 (위상 = 2π(3s + 6s²))
+        const flicker = 0.5 + 0.5 * Math.sin(2 * Math.PI * (3 * s + 6 * s * s))
+        if (v.burst) updateBurst(v.burst, notePos[i], ms, flicker)
         if (ms < VANISH.twinkleMs) {
-          const s = ms / 1000
-          // 주파수가 점점 올라가는 반짝임 (위상 = 2π(3s + 6s²))
-          const flicker = 0.5 + 0.5 * Math.sin(2 * Math.PI * (3 * s + 6 * s * s))
           const p = ms / VANISH.twinkleMs
           glow = 1 + (VANISH.maxGlow - 1) * p * flicker
           whiten = p
@@ -1293,7 +1391,7 @@ export function StarMapCanvas() {
           f.label.visible = noteAlive[f.idx]
         })
         // 항로 — 양 끝 노트가 모두 생겨야 보인다
-        routeVisuals.forEach((rv, i) => { routeAlive[i] = noteAlive[rv.aIdx] && noteAlive[rv.bIdx] })
+        routeVisuals.forEach((rv, i) => { routeAlive[i] = !rv.hidden && noteAlive[rv.aIdx] && noteAlive[rv.bIdx] })
         if (routeLines && routeLights && routeLineBaseCol && routeLightBaseCol) {
           const lineAttr = routeLines.geometry.getAttribute('color') as THREE.BufferAttribute
           const lightAttr = routeLights.geometry.getAttribute('color') as THREE.BufferAttribute
@@ -1418,8 +1516,10 @@ export function StarMapCanvas() {
       }
       const si = pickNearest(lightPos, e, rect, routeAlive, 12)
       if (si >= 0) {
-        canvas.style.cursor = 'default'
-        setTooltip({ title: routeVisuals[si].label, x: e.clientX - rect.left, y: e.clientY - rect.top })
+        canvas.style.cursor = 'pointer'
+        const rv = routeVisuals[si]
+        const quote = rv.evidence ? ` — “${rv.evidence}”` : ''
+        setTooltip({ title: `근거: ${rv.shared.join(', ')}${quote} · 클릭하면 숨김`, x: e.clientX - rect.left, y: e.clientY - rect.top })
         return
       }
       canvas.style.cursor = 'grab'
@@ -1430,8 +1530,26 @@ export function StarMapCanvas() {
       pointerDown = false
       canvas.style.cursor = 'grab'
       if (!moved) {
-        const ni = pickNearest(notePos, e, canvas.getBoundingClientRect(), noteAlive)
-        if (ni >= 0) openNote(noteIds[ni]).then(() => setTab('edit'))
+        const rect = canvas.getBoundingClientRect()
+        const ni = pickNearest(notePos, e, rect, noteAlive)
+        if (ni >= 0 && e.shiftKey) {
+          pickPathNote(ni)
+          return
+        }
+        if (ni >= 0) {
+          openNote(noteIds[ni]).then(() => setTab('edit'))
+          return
+        }
+        const si = pickNearest(lightPos, e, rect, routeAlive, 12)
+        if (si >= 0) {
+          const rv = routeVisuals[si]
+          if (!confirm(`이 항로를 숨길까요?\n근거: ${rv.shared.join(', ')}`)) return
+          searchApi.rejectRoute(noteIds[rv.aIdx], noteIds[rv.bIdx]).then(() => {
+            rv.hidden = true
+            appliedTime = undefined // 다음 프레임에 항로 표시를 다시 적용
+            setTooltip(null)
+          }).catch(() => alert('항로를 숨기지 못했습니다. 잠시 후 다시 시도하세요.'))
+        }
       }
     })
 
@@ -1490,6 +1608,61 @@ export function StarMapCanvas() {
     const clock = new THREE.Clock()
     const camRight = new THREE.Vector3()
     let animId: number
+    // ── 경로 탐색 강조선 ─────────────────────────────────────
+    let pathFromIdx = -1
+    let pathNoteIdx: number[] = []
+    let pathLine: THREE.Line | null = null
+    let pathRequest = 0
+    function clearPath() {
+      pathFromIdx = -1
+      pathNoteIdx = []
+      pathRequest++
+      if (pathLine) {
+        scene.remove(pathLine)
+        pathLine.geometry.dispose()
+        ;(pathLine.material as THREE.Material).dispose()
+        pathLine = null
+      }
+    }
+    function pickPathNote(ni: number) {
+      if (pathFromIdx < 0 || pathNoteIdx.length) {
+        clearPath()
+        pathFromIdx = ni
+        setPathCard({ status: 'pick', fromTitle: noteTitles[ni] })
+        return
+      }
+      if (ni === pathFromIdx) return
+      const request = ++pathRequest
+      setPathCard({ status: 'loading' })
+      searchApi.routePath(noteIds[pathFromIdx], noteIds[ni]).then(path => {
+        if (request !== pathRequest || routesCancelled) return
+        setPathCard({ status: 'done', path })
+        if (!path.found) return
+        // 필터로 성도에 없는 노트는 건너뛰고, 보이는 노트끼리만 잇는다
+        pathNoteIdx = path.nodes
+          .filter(n => n.kind === 'note')
+          .map(n => noteIds.indexOf(n.id))
+          .filter(i => i >= 0)
+        const geo = new THREE.BufferGeometry()
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pathNoteIdx.length * 3), 3))
+        pathLine = new THREE.Line(geo, new THREE.LineBasicMaterial({
+          color: 0xffd27a, transparent: true, opacity: 0.95,
+          depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+        }))
+        pathLine.frustumCulled = false
+        scene.add(pathLine)
+      }).catch(() => {
+        if (request === pathRequest) setPathCard({ status: 'error', message: '경로를 찾지 못했습니다' })
+      })
+    }
+    function updatePathLine() {
+      if (!pathLine) return
+      const attr = pathLine.geometry.getAttribute('position') as THREE.BufferAttribute
+      pathNoteIdx.forEach((ni, k) => attr.setXYZ(k, notePos[ni].x, notePos[ni].y, notePos[ni].z))
+      attr.needsUpdate = true
+    }
+    clearPathRef.current = () => { clearPath(); setPathCard(null) }
+
     function animate() {
       animId = requestAnimationFrame(animate)
       const dt = Math.min(clock.getDelta(), 0.1) // 탭 전환 후 복귀 시 한 번에 튀지 않게
@@ -1521,6 +1694,7 @@ export function StarMapCanvas() {
       syncNoteBuffers()
       updateConstellationLines()
       updateRoutes()
+      updatePathLine()
 
       composer.render()
       // 라벨·마커는 bloom 없이 최종 화면 위에 덧그린다
@@ -1551,6 +1725,8 @@ export function StarMapCanvas() {
       setNoteVanisher(null)
       vanishing.forEach(v => v.resolve()) // 연출 중에 성도를 떠나도 삭제·보관은 마저 반영 (스프라이트는 아래 장면 정리에서 해제)
       flyToRef.current = null
+      clearPathRef.current = null
+      setPathCard(null)
       routesCancelled = true
       cancelAnimationFrame(animId)
       obs.disconnect()
@@ -1716,6 +1892,43 @@ export function StarMapCanvas() {
         </section>
       )}
 
+      {starMapFilter?.type === 'constellation' && <ConstellationGraph conceptId={starMapFilter.value} />}
+
+      {pathCard && (
+        <section className="sn-path-card" aria-live="polite">
+          <header>
+            <span>항로 경로</span>
+            <button type="button" aria-label="경로 닫기" onClick={() => clearPathRef.current?.()}>×</button>
+          </header>
+          {pathCard.status === 'pick' && <p>출발: {pathCard.fromTitle} — Shift+클릭으로 도착 노트를 고르세요</p>}
+          {pathCard.status === 'loading' && <p>경로를 찾는 중…</p>}
+          {pathCard.status === 'error' && <p>{pathCard.message}</p>}
+          {pathCard.status === 'done' && !pathCard.path.found && (
+            <p>두 노트를 잇는 개념·관계 경로가 없습니다</p>
+          )}
+          {pathCard.status === 'done' && pathCard.path.found && (
+            <ol>
+              {pathCard.path.nodes.map((n, i) => {
+                const edge = pathCard.path.edges[i]
+                return (
+                  <li key={`${n.kind}:${n.id}`}>
+                    {n.kind === 'note'
+                      ? <button type="button" className="sn-path-note" onClick={() => openNote(n.id).then(() => setTab('edit'))}>{n.title}</button>
+                      : <span className="sn-path-concept">{n.name}</span>}
+                    {edge?.kind === 'relation' && (
+                      <div className="sn-path-relation">
+                        {edge.subject} —{edge.pred}→ {edge.object}
+                        {edge.evidence && <q>{edge.evidence}</q>}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </section>
+      )}
+
       {tooltip && (
         <div className="sn-star-tip" style={{ left: tooltip.x + 16, top: tooltip.y - 40 }}>
           {tooltip.title}
@@ -1737,6 +1950,7 @@ export function StarMapCanvas() {
             <span><kbd>Ctrl</kbd>+<kbd>드래그</kbd> 이동</span>
             <span><kbd>스크롤</kbd> 확대</span>
             <span><kbd>클릭</kbd> 노트 열기</span>
+            <span><kbd>Shift</kbd>+<kbd>클릭</kbd> 경로</span>
           </span>
         </LiquidGlass>
       </div>

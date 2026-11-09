@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { ConstellationSummary, ConstellationNote } from '../types'
+import type { ConstellationSummary, ConstellationNote, ConstellationGraph } from '../types'
 
 export const constellationsApi = {
   // 별자리 검색은 화면에서 바로 거르므로 전부 받는다 (기본 100개 제한을 넘기도록)
@@ -8,4 +8,7 @@ export const constellationsApi = {
 
   notes: (id: string): Promise<ConstellationNote[]> =>
     apiFetch<ConstellationNote[]>(`/constellations/${encodeURIComponent(id)}/notes`),
+
+  graph: (id: string): Promise<ConstellationGraph> =>
+    apiFetch<ConstellationGraph>(`/constellations/${encodeURIComponent(id)}/graph`),
 }

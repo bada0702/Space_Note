@@ -33,6 +33,9 @@ export const aiApi = {
   rebuildGraph: (): Promise<unknown> => apiFetch('/graph/rebuild', { method: 'POST' }),
   retryFailedGraph: (): Promise<unknown> => apiFetch('/graph/retry-failed', { method: 'POST' }),
   cancelGraph: (): Promise<{ cancelled: number }> => apiFetch('/graph/cancel', { method: 'POST' }),
+  analyzeGraphMissing: (): Promise<{ queued: number }> => apiFetch('/graph/analyze', { method: 'POST' }),
+  analyzeGraphNote: (noteId: string): Promise<{ queued: number }> =>
+    apiFetch(`/graph/notes/${encodeURIComponent(noteId)}`, { method: 'POST' }),
 
   async *streamChat(params: {
     model: AIModel

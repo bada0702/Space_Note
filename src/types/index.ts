@@ -15,6 +15,8 @@ export interface Note {
   tags: string[]
   word_count: number
   analysis_status: 'pending' | 'analyzed' | 'failed'
+  graph_status?: 'idle' | 'pending' | 'done' | 'failed'
+  graph_error?: string | null
   is_favorite: boolean
   is_archived: boolean
   created_at: string
@@ -79,6 +81,7 @@ export interface GraphStatus {
   total: number
   concepts: number
   relations: number
+  failures?: { id: string; title: string; error: string | null }[]
   rate_per_minute: number
   eta_minutes: number
 }
@@ -124,35 +127,27 @@ export interface SearchResult {
   modified_at: string
 }
 
-/** 온톨로지 항로의 근거 — 노드 공유는 p = '공유', s = o */
-export interface RouteRelation {
-  s: string
-  s_kind: 'class' | 'instance'
-  p: string
-  o: string
-  o_kind: 'class' | 'instance'
-}
-
-export type RouteKind = 'ontology' | 'keyword'
-
 export interface Discovery {
   note_id: string
   title: string
   category_id: string | null
   shared_count: number
   shared_entities: string[]
+  shared_concepts: string[]
+  relations: string[]
+  evidence: Record<string, string>
   modified_at: string
-  kind: RouteKind
-  relations: RouteRelation[]
 }
 
 export interface DiscoveryRoute {
   note_a: string
   note_b: string
   shared_entities: string[]
+  shared_concepts: string[]
+  relations: string[]
+  evidence: Record<string, string>
+  kind: 'relation' | 'concept' | 'keyword' | 'none'
   confirmed: boolean
-  kind: RouteKind
-  relations: RouteRelation[]
 }
 
 export interface Entity {
@@ -183,3 +178,47 @@ export type StarMapFilter =
   | { type: 'category'; value: string }
   | { type: 'constellation'; value: string; label: string } // value = 개념 id
   | null
+
+export interface ConstellationGraphNode {
+  id: string
+  name: string
+  type: string
+}
+
+export interface ConstellationGraphEdge {
+  source: string
+  pred: string
+  target: string
+  evidence: string | null
+  notes: { id: string; title: string }[]
+}
+
+export interface ConstellationGraph {
+  center: ConstellationGraphNode
+  nodes: ConstellationGraphNode[]
+  edges: ConstellationGraphEdge[]
+}
+
+export type RoutePathNode =
+  | { kind: 'note'; id: string; title: string }
+  | { kind: 'concept'; id: string; name: string }
+
+export type RoutePathEdge =
+  | { kind: 'contains' }
+  | { kind: 'relation'; pred: string; subject: string; object: string; evidence: string | null }
+
+export interface RoutePath {
+  found: boolean
+  nodes: RoutePathNode[]
+  edges: RoutePathEdge[]
+}
+
+/** 일괄 키워드 분석(AI·파이썬) 진행 수 — 서버 메모리 기준이라 재시작하면 초기화된다 */
+export interface AnalyzeProgress {
+  kind: 'ai' | 'python' | null
+  total: number
+  done: number
+  failed: number
+  started_at: string | null
+  running: boolean
+}
