@@ -1,0 +1,146 @@
+{
+ "note": "SAMPLE_DOCKER.md",
+ "status": "sample — 도구 동작 확인용 가상 데이터",
+ "concepts": [
+  {
+   "name": "Docker",
+   "kind": "instance",
+   "type": "도구",
+   "aliases": [
+    "도커"
+   ]
+  },
+  {
+   "name": "컨테이너 기술",
+   "kind": "class",
+   "type": [
+    "기술",
+    "개념"
+   ],
+   "aliases": [
+    "컨테이너"
+   ]
+  },
+  {
+   "name": "Linux",
+   "kind": "instance",
+   "type": "플랫폼·서비스",
+   "aliases": [
+    "리눅스",
+    "Linux 커널"
+   ]
+  },
+  {
+   "name": "cgroups",
+   "kind": "instance",
+   "type": "기술"
+  },
+  {
+   "name": "namespaces",
+   "kind": "instance",
+   "type": "기술"
+  },
+  {
+   "name": "Docker Compose",
+   "kind": "instance",
+   "type": "개발 도구"
+  },
+  {
+   "name": "멀티 스테이지 빌드",
+   "kind": "instance",
+   "type": "기술"
+  },
+  {
+   "name": "느린 배포",
+   "kind": "instance",
+   "type": "문제",
+   "aliases": [
+    "배포가 느린 문제",
+    "이미지 크기 문제"
+   ]
+  },
+  {
+   "name": "24",
+   "kind": "literal",
+   "type": "값",
+   "aliases": [
+    "버전 24",
+    "v24"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "s": "Docker",
+   "p": "인스턴스이다",
+   "o": "컨테이너 기술"
+  },
+  {
+   "s": "Docker",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "cgroups"
+  },
+  {
+   "s": "Docker",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "namespaces"
+  },
+  {
+   "s": "Docker Compose",
+   "p": [
+    "의존한다",
+    "사용한다"
+   ],
+   "o": "Docker"
+  },
+  {
+   "s": "멀티 스테이지 빌드",
+   "p": "해결한다",
+   "o": "느린 배포"
+  },
+  {
+   "s": "Docker",
+   "p": "버전",
+   "o": "24"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "cgroups",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "Linux"
+  },
+  {
+   "s": "namespaces",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "Linux"
+  },
+  {
+   "s": "Docker",
+   "p": [
+    "실행 환경",
+    "의존한다",
+    "사용한다",
+    "관련있다"
+   ],
+   "o": "Linux"
+  },
+  {
+   "s": "Docker Compose",
+   "p": "연동한다",
+   "o": "Docker"
+  }
+ ]
+}

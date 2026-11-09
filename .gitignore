@@ -31,3 +31,6 @@ vault2.tar
 qa_*.mjs
 code_artifact.html
 .fablize/
+
+# 지식 그래프 추출 평가 보고서 (실행할 때마다 생성)
+backend/graph_eval/reports/
