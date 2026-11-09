@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Note } from '../../types'
+import type { NoteSummary } from '../../types'
 import { useCategoriesStore } from '../../store/categoriesStore'
 import { useNotesStore } from '../../store/notesStore'
 import { useAIStore } from '../../store/aiStore'
@@ -100,7 +100,7 @@ export function VoyageLog() {
     setLastClicks(prev => ({ ...prev, [id]: now }))
   }
 
-  const handleSelectClick = (id: string, e: React.MouseEvent, group: Note[]) => {
+  const handleSelectClick = (id: string, e: React.MouseEvent, group: NoteSummary[]) => {
     // Safari는 버튼 클릭 시 포커스를 주지 않으므로 Delete 키를 받도록 목록에 포커스
     if (!listRef.current?.contains(document.activeElement)) listRef.current?.focus()
     const anchor = anchorRef.current

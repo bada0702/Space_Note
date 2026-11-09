@@ -10,7 +10,7 @@ def _cats(client):
 
 
 def _notes(client):
-    return client.get("/notes", headers=AUTH).json()
+    return [client.get(f"/notes/{n['id']}", headers=AUTH).json() for n in client.get("/notes", headers=AUTH).json()]
 
 
 def test_import_files_galaxy_from_first_folder(client):

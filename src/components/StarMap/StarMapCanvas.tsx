@@ -10,7 +10,7 @@ import { useNotesStore, setNoteVanisher } from '../../store/notesStore'
 import { constellationsApi } from '../../api/constellationsApi'
 import { searchApi } from '../../api/searchApi'
 import ConstellationGraph from './ConstellationGraph'
-import type { DiscoveryRoute, Note, RoutePath } from '../../types'
+import type { DiscoveryRoute, NoteSummary, RoutePath } from '../../types'
 import { HEX_FADE, hexFadeFor, nearestPlanetDistance } from './nearFade'
 
 // ─────────────────────────────────────────────────────────────
@@ -78,6 +78,7 @@ const SIGN = { max: 12, nearDist: 1400 }
 // 검색으로 고른 행성에 다가갈 카메라 거리 — 육각형·팻말이 보이는 거리(HEX_FADE.near) 안쪽
 const SEARCH_FLY_DIST = 700
 const SEARCH_MAX_RESULTS = 8
+const SEARCH_DEBOUNCE_MS = 200
 const OVERLAY_LAYER = 1           // 라벨·마커 전용 레이어 — bloom 뒤에 따로 그려 번지지 않게 한다
 // 성운 먼지 구름 수 — 노트(행성)보다 먼지가 많아 보이지 않도록 노트 수에 비례 (노트의 30%, 6~60개)
 const dustCount = (n: number) => Math.min(60, Math.max(6, Math.round(n * 0.3)))
@@ -109,11 +110,9 @@ const MIN_EXPANSION = 0.25
 const TIMELINE_LERP = 0.08
 
 // 노트의 탄생 시각(ms). 가져온 대화 노트는 created_at이 가져온 시각으로 몰려 있어,
-// 본문 머리의 '**생성 일시**: YYYY-MM-DD HH:MM:SS'(원래 대화 시각)가 있으면 그것을 쓴다.
-const ORIGINAL_DATE_RE = /\*\*생성 일시\*\*:\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/
-function noteBirthTime(note: Note): number {
-  const m = ORIGINAL_DATE_RE.exec(note.content.slice(0, 1000))
-  const original = m ? Date.parse(`${m[1]}T${m[2]}`) : NaN
+// 서버가 본문 머리에서 찾아 준 원래 대화 시각(origin_at)이 있으면 그것을 쓴다.
+function noteBirthTime(note: NoteSummary): number {
+  const original = note.origin_at ? Date.parse(note.origin_at) : NaN
   return Number.isNaN(original) ? Date.parse(note.created_at) || 0 : original
 }
 
@@ -454,20 +453,37 @@ export function StarMapCanvas() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchActive, setSearchActive] = useState(0)
-  const searchMatches = useMemo(() => {
+  const [bodyHits, setBodyHits] = useState<{ q: string; ids: string[] }>({ q: '', ids: [] })
+  const titleMatches = useMemo(() => {
     // 제목이 'PHP_구문_오류_해결'처럼 밑줄로 이어져 있어 띄어쓰기·밑줄·하이픈을 같은 구분자로 보고,
     // 검색어의 단어가 모두 들어 있으면 일치. 제목 일치를 먼저, 본문 일치를 그다음에 보여 준다.
     const norm = (t: string) => t.toLowerCase().replace(/[_\-\s]+/g, ' ')
     const words = norm(searchQuery).trim().split(' ').filter(Boolean)
     if (!words.length) return []
-    const hasAll = (t: string) => words.every(w => t.includes(w))
-    const inTitle = notes.filter(n => hasAll(norm(n.title)))
-    const inBody = inTitle.length >= SEARCH_MAX_RESULTS
-      ? []
-      : notes.filter(n => !inTitle.includes(n) && hasAll(norm(n.content)))
-    return [...inTitle, ...inBody].slice(0, SEARCH_MAX_RESULTS)
+    return notes.filter(n => words.every(w => norm(n.title).includes(w)))
   }, [notes, searchQuery])
-  const selectSearch = (note: Note) => {
+  const titlesFillResults = titleMatches.length >= SEARCH_MAX_RESULTS
+  // 목록에는 본문이 없으므로 본문 일치는 서버에 묻는다
+  useEffect(() => {
+    if (!searchQuery.trim() || titlesFillResults) return
+    let stale = false
+    const timer = setTimeout(() => {
+      searchApi.search(searchQuery, true)
+        .then(rs => { if (!stale) setBodyHits({ q: searchQuery, ids: rs.map(r => r.id) }) })
+        .catch(console.error)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => { stale = true; clearTimeout(timer) }
+  }, [searchQuery, titlesFillResults])
+  const searchMatches = useMemo(() => {
+    if (titlesFillResults || bodyHits.q !== searchQuery) return titleMatches.slice(0, SEARCH_MAX_RESULTS)
+    const byId = new Map(notes.map(n => [n.id, n]))
+    const inBody = bodyHits.ids.flatMap(id => {
+      const n = byId.get(id)
+      return n && !titleMatches.includes(n) ? [n] : []
+    })
+    return [...titleMatches, ...inBody].slice(0, SEARCH_MAX_RESULTS)
+  }, [notes, searchQuery, titleMatches, titlesFillResults, bodyHits])
+  const selectSearch = (note: NoteSummary) => {
     setSearchQuery(note.title)
     setSearchOpen(false)
     // 타임라인상 아직 없는 행성일 수 있으니 현재 우주로

@@ -21,7 +21,11 @@ export interface Note {
   is_archived: boolean
   created_at: string
   modified_at: string
+  origin_at?: string | null  // 본문 머리의 원래 생성 시각 (가져온 대화 노트)
 }
+
+// 목록 응답에는 본문이 없다 — 본문은 notesApi.get으로 받는다
+export type NoteSummary = Omit<Note, 'content'>
 
 export type EditorTab = 'edit' | 'preview' | 'starmap'
 export type Theme = 'dark' | 'light'

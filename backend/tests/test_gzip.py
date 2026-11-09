@@ -3,15 +3,15 @@ from tests.conftest import AUTH
 GZIP = {**AUTH, "Accept-Encoding": "gzip"}
 
 
-def test_note_list_is_gzipped(client):
+def test_note_response_is_gzipped(client):
     body = "압축 대상 본문 " * 500
-    assert client.post("/notes", json={"title": "큰 노트", "content": body}, headers=AUTH).status_code < 300
+    nid = client.post("/notes", json={"title": "큰 노트", "content": body}, headers=AUTH).json()["id"]
 
-    r = client.get("/notes", headers=GZIP)
+    r = client.get(f"/notes/{nid}", headers=GZIP)
 
     assert r.status_code == 200
     assert r.headers.get("content-encoding") == "gzip"
-    assert r.json()[0]["content"].strip() == body.strip()
+    assert r.json()["content"].strip() == body.strip()
 
 
 def test_chat_stream_is_not_gzipped(client):

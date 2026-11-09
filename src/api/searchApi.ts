@@ -7,8 +7,8 @@ function withEvidence<T extends { shared_concepts?: string[]; relations?: string
 }
 
 export const searchApi = {
-  search: (q: string): Promise<SearchResult[]> =>
-    apiFetch<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`),
+  search: (q: string, allWords = false): Promise<SearchResult[]> =>
+    apiFetch<SearchResult[]>(`/search?q=${encodeURIComponent(q)}${allWords ? '&all_words=true' : ''}`),
 
   discoveries: (noteId?: string): Promise<Discovery[]> =>
     apiFetch<Discovery[]>(`/discoveries${noteId ? `?note_id=${noteId}` : ''}`).then(ds => ds.map(withEvidence)),

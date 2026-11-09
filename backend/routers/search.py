@@ -1,3 +1,4 @@
+import re
 from itertools import combinations
 from collections import defaultdict
 from typing import Optional
@@ -13,17 +14,29 @@ router = APIRouter()
 
 
 @router.get("/search")
-def search(q: str = ""):
+def search(q: str = "", all_words: bool = False):
     term = (q or "").strip()
     if not term:
         return []
-    like = f"%{term}%"
+    if all_words:
+        # 성도 검색: 띄어쓰기·밑줄·하이픈으로 나눈 단어가 제목이나 본문 한쪽에 모두 있으면 일치
+        patterns = [
+            "%" + w.replace("\\", "\\\\").replace("%", "\\%") + "%"
+            for w in re.split(r"[_\-\s]+", term) if w
+        ]
+        if not patterns:
+            return []
+        every = lambda col: " AND ".join([f"{col} LIKE ? ESCAPE '\\'"] * len(patterns))  # noqa: E731
+        where, params = f"(({every('title')}) OR ({every('content')}))", patterns * 2
+    else:
+        like = f"%{term}%"
+        where, params = "(title LIKE ? OR content LIKE ?)", [like, like]
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, title, content, category_id, created_at, modified_at FROM notes "
-            "WHERE (title LIKE ? OR content LIKE ?) AND is_archived = 0 "
+            f"WHERE {where} AND is_archived = 0 "
             "ORDER BY modified_at DESC LIMIT 50",
-            (like, like),
+            params,
         ).fetchall()
     return [
         {

@@ -1,15 +1,15 @@
 import { create } from 'zustand'
-import type { Note, EditorTab, StarMapFilter } from '../types'
+import type { Note, NoteSummary, EditorTab, StarMapFilter } from '../types'
 import { notesApi } from '../api/notesApi'
 import { formatDateTime } from '../utils/dateFormat'
 
 interface NotesState {
-  notes: Note[]
+  notes: NoteSummary[]
   activeNote: Note | null
   activeTab: EditorTab
   vaultPath: string
   starMapFilter: StarMapFilter  // null = 전체, category = 은하 하나, constellation = 별자리(개념)
-  archivedNotes: Note[]
+  archivedNotes: NoteSummary[]
   archivedCount: number
   fetchNotes: (categoryId?: string) => Promise<void>
   openNote: (id: string) => Promise<void>

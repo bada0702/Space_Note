@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Category, Note } from '../../types'
+import type { Category, NoteSummary } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
 
@@ -12,13 +12,13 @@ const CATEGORY_COLOR_PRESETS = [
 
 interface Props {
   category: Category
-  notes: Note[]
+  notes: NoteSummary[]
   onDoubleClickNote: (id: string) => void
   activeNoteId?: string
   onCreateNote: (categoryId: string) => void
   onDropNote: (noteId: string) => void
   selectedIds: Set<string>
-  onSelectClick: (id: string, e: React.MouseEvent, group: Note[]) => void
+  onSelectClick: (id: string, e: React.MouseEvent, group: NoteSummary[]) => void
 }
 
 export function NoteItem({
@@ -29,7 +29,7 @@ export function NoteItem({
   onDoubleClick,
   indent = 32,
 }: {
-  note: Note
+  note: NoteSummary
   isActive: boolean
   isSelected: boolean
   onSelect: (e: React.MouseEvent) => void

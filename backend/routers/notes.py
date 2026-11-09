@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -25,8 +26,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# 가져온 대화 노트는 created_at이 가져온 시각으로 몰려 있어, 본문 머리의 원래 시각을 따로 내려 준다
+_ORIGIN_DATE = re.compile(r"\*\*생성 일시\*\*:\s*(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)")
+_ORIGIN_HEAD_CHARS = 1000
+# 목록은 사이드바가 열릴 때마다 받으므로 본문을 뺀다 — origin_at 계산에 필요한 머리만 읽는다
+_LIST_COLUMNS = (
+    f"id, path, title, substr(content, 1, {_ORIGIN_HEAD_CHARS}) AS content, category_id, tags, "
+    "word_count, analysis_status, created_at, modified_at, is_favorite, is_archived, "
+    "graph_status, graph_hash, graph_error"
+)
+
+
+def _origin_at(content: str | None) -> str | None:
+    m = _ORIGIN_DATE.search((content or "")[:_ORIGIN_HEAD_CHARS])
+    return f"{m[1]}T{m[2]}" if m else None
+
+
 def _row_to_note(row) -> dict:
     d = dict(row)
+    d["origin_at"] = _origin_at(d.get("content"))
     d["tags"] = json.loads(d.get("tags") or "[]")
     d["is_favorite"] = bool(d.get("is_favorite"))
     d["is_archived"] = bool(d.get("is_archived"))
@@ -145,15 +163,18 @@ def list_notes(category_id: Optional[str] = None, archived: bool = False):
     with get_conn() as conn:
         if category_id:
             rows = conn.execute(
-                f"SELECT * FROM notes WHERE {where} AND category_id = ? "
+                f"SELECT {_LIST_COLUMNS} FROM notes WHERE {where} AND category_id = ? "
                 "ORDER BY modified_at DESC",
                 (category_id,),
             ).fetchall()
         else:
             rows = conn.execute(
-                f"SELECT * FROM notes WHERE {where} ORDER BY modified_at DESC"
+                f"SELECT {_LIST_COLUMNS} FROM notes WHERE {where} ORDER BY modified_at DESC"
             ).fetchall()
-    return [_row_to_note(r) for r in rows]
+    notes = [_row_to_note(r) for r in rows]
+    for note in notes:
+        del note["content"]
+    return notes
 
 
 def _require_api_key() -> None:

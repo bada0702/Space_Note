@@ -1,5 +1,5 @@
 import { apiFetch } from './client'
-import type { AnalyzeProgress, Note } from '../types'
+import type { AnalyzeProgress, Note, NoteSummary } from '../types'
 
 export const notesApi = {
   list: (categoryId?: string, archived?: boolean) => {
@@ -7,7 +7,7 @@ export const notesApi = {
     if (categoryId) params.set('category_id', categoryId)
     if (archived) params.set('archived', 'true')
     const qs = params.toString()
-    return apiFetch<Note[]>(`/notes${qs ? `?${qs}` : ''}`)
+    return apiFetch<NoteSummary[]>(`/notes${qs ? `?${qs}` : ''}`)
   },
   get: (id: string) => apiFetch<Note>(`/notes/${id}`),
   importChatGPT: (url: string, categoryId?: string) =>
