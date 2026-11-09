@@ -19,7 +19,7 @@ def _ordered(a: str, b: str) -> tuple[str, str]:
 
 @router.post("/routes")
 def confirm_route(body: RouteCreate):
-    """미개척 항로를 확정 항로로 승격. 쌍은 note_a < note_b로 정규화 저장."""
+    """항로를 확정하거나 거부한다. 쌍은 note_a < note_b로 정규화 저장, 다시 보내면 상태를 바꾼다."""
     if body.note_a == body.note_b:
         raise HTTPException(status_code=400, detail="same note")
     a, b = _ordered(body.note_a, body.note_b)
@@ -28,11 +28,11 @@ def confirm_route(body: RouteCreate):
             if conn.execute("SELECT 1 FROM notes WHERE id = ?", (nid,)).fetchone() is None:
                 raise HTTPException(status_code=404, detail="note not found")
         conn.execute(
-            "INSERT OR IGNORE INTO routes (id, note_a, note_b, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (str(uuid.uuid4()), a, b, _now()),
+            "INSERT INTO routes (id, note_a, note_b, created_at, status) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(note_a, note_b) DO UPDATE SET status = excluded.status",
+            (str(uuid.uuid4()), a, b, _now(), body.status),
         )
-    return {"note_a": a, "note_b": b, "confirmed": True}
+    return {"note_a": a, "note_b": b, "confirmed": body.status == "confirmed", "status": body.status}
 
 
 @router.delete("/routes", status_code=204)

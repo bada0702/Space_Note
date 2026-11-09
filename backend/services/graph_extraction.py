@@ -27,6 +27,7 @@ MAX_CONCEPTS = 15   # class + instance
 MAX_LITERALS = 10
 MAX_RELATIONS = 25
 MAX_DATA_PROPERTY_CHARS = 20
+MAX_EVIDENCE_CHARS = 300
 
 # 온톨로지 노드 종류와 관계
 KINDS = ("class", "instance", "literal")
@@ -180,7 +181,7 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 
 형식:
 {{"nodes": [{{"name": str, "kind": "class"|"instance"|"literal", "type": str, "aliases": [str], "weight": 1|2|3}}],
- "edges": [{{"s": str, "p": str, "o": str}}]}}
+ "edges": [{{"s": str, "p": str, "o": str, "q": str}}]}}
 
 노드 규칙:
 - class: 추상적인 분류·범주 (예: 벡터DB, LLM, 컨테이너 기술)
@@ -202,6 +203,7 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 - class/instance 사이의 관계는 아래 중 하나. 괄호는 s 유형 → o 유형이며, 맞는 관계가 없으면 관련있다:
 {_predicate_lines()}
 - 데이터 속성: class/instance → literal. p는 속성 이름(예: 버전, 출시일, 차원 수), {MAX_DATA_PROPERTY_CHARS}자 이내.
+- q: 그 엣지의 근거가 되는 노트 속 문장을 고치지 말고 그대로 옮긴다. 근거 문장이 없으면 빈 문자열.
 - 다른 설명 없이 JSON만 출력.
 
 노트:
@@ -333,12 +335,25 @@ def _fit_relation(s: dict, p: str, o: dict) -> tuple[dict, str, dict] | None:
     return s, p, o
 
 
-def parse_graph(text: str) -> dict:
+def _squash(text: str) -> str:
+    return " ".join((text or "").split())
+
+
+def _evidence(quote, source: str | None) -> str | None:
+    """근거 문장은 노트 본문에 (공백 차이 외에는) 그대로 있을 때만 인정한다."""
+    quote = _squash(str(quote or ""))[:MAX_EVIDENCE_CHARS]
+    if not quote or source is None or quote not in _squash(source):
+        return None
+    return quote
+
+
+def parse_graph(text: str, source: str | None = None) -> dict:
     """응답 텍스트 → {"concepts": [...], "relations": [...]} (검증·정리된 값).
 
     새 형식 {"nodes","edges"}와 예전 형식 {"concepts","relations"}를 모두 받는다.
     형식 자체가 깨졌으면 GraphParseError. 개별 항목의 위반(알 수 없는 type, 방향 규칙 위반,
     목록에 없는 노드를 가리키는 관계 등)은 고치거나 버린다.
+    source(노트 본문)를 주면 엣지의 근거 문장 q를 본문과 대조해 evidence로 남긴다.
     """
     cleaned = (text or "").strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", cleaned, re.DOTALL)
@@ -421,7 +436,8 @@ def parse_graph(text: str) -> dict:
         if key in seen:
             continue
         seen.add(key)
-        relations.append({"s": s["norm"], "p": pred, "o": o["norm"]})
+        relations.append({"s": s["norm"], "p": pred, "o": o["norm"],
+                          "evidence": _evidence(r.get("q"), source)})
         if len(relations) >= MAX_RELATIONS:
             break
 
@@ -515,6 +531,27 @@ def gc_orphans(conn) -> None:
     conn.execute("DELETE FROM concept_aliases WHERE concept_id NOT IN (SELECT id FROM concepts)")
 
 
+def purge_dangling_rows(conn) -> dict[str, int]:
+    """없는 노트를 가리키는 분석 결과(그래프·엔티티·태그·항로)를 지우고 고아 개념을 정리한다.
+
+    앱 밖에서 노트 행만 지워진 경우(볼트 동기화 이전 버전, 직접 DB 수정 등)를 복구한다.
+    """
+    live = "SELECT id FROM notes"
+    removed = {
+        "note_concepts": conn.execute(f"DELETE FROM note_concepts WHERE note_id NOT IN ({live})").rowcount,
+        "relations": conn.execute(f"DELETE FROM relations WHERE note_id NOT IN ({live})").rowcount,
+        "entities": conn.execute(f"DELETE FROM entities WHERE note_id NOT IN ({live})").rowcount,
+        "tags": conn.execute(f"DELETE FROM tags WHERE note_id NOT IN ({live})").rowcount,
+        "routes": conn.execute(
+            f"DELETE FROM routes WHERE note_a NOT IN ({live}) OR note_b NOT IN ({live})"
+        ).rowcount,
+    }
+    before = conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0]
+    gc_orphans(conn)
+    removed["concepts"] = before - conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0]
+    return removed
+
+
 def store_graph(conn, note_id: str, graph: dict) -> None:
     """노트의 그래프를 통째로 교체."""
     clear_note_graph(conn, note_id)
@@ -546,8 +583,9 @@ def store_graph(conn, note_id: str, graph: dict) -> None:
             continue
         sd, pred, od = fixed
         conn.execute(
-            "INSERT OR IGNORE INTO relations (id, subj_id, pred, obj_id, note_id) VALUES (?, ?, ?, ?, ?)",
-            (str(uuid.uuid4()), sd["id"], pred, od["id"], note_id),
+            "INSERT OR IGNORE INTO relations (id, subj_id, pred, obj_id, note_id, evidence) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), sd["id"], pred, od["id"], note_id, r.get("evidence")),
         )
     gc_orphans(conn)
 
@@ -576,13 +614,13 @@ def process_note(note_id: str) -> str:
 
     try:
         try:
-            graph = parse_graph(call_model(content))
+            graph = parse_graph(call_model(content), content)
         except GraphParseError:
             logger.info("graph parse failed for %s, retrying once", note_id)
-            graph = parse_graph(call_model(content))
-    except Exception:
+            graph = parse_graph(call_model(content), content)
+    except Exception as e:
         logger.exception("graph extraction failed for note %s", note_id)
-        _set_status(note_id, "failed", None)
+        _set_status(note_id, "failed", None, describe_failure(e))
         return "failed"
 
     with get_conn() as conn:
@@ -596,17 +634,43 @@ def process_note(note_id: str) -> str:
             return "pending"
         store_graph(conn, note_id, graph)
         conn.execute(
-            "UPDATE notes SET graph_status = 'done', graph_hash = ? WHERE id = ?", (digest, note_id)
+            "UPDATE notes SET graph_status = 'done', graph_hash = ?, graph_error = NULL WHERE id = ?",
+            (digest, note_id),
         )
     return "done"
 
 
-def _set_status(note_id: str, status: str, digest) -> None:
+def describe_failure(e: Exception) -> str:
+    """추출 실패를 사용자에게 보여줄 짧은 이유로 바꾼다 (상세는 로그에 남는다)."""
+    if isinstance(e, GraphParseError):
+        return "모델 응답 형식이 올바르지 않습니다"
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code
+        if ollama_client.is_ollama_model(graph_model()):
+            return f"Ollama 요청이 실패했습니다 (HTTP {code}) — 모델 이름을 확인하세요"
+        if code in (401, 403):
+            return "Google API 키가 유효하지 않거나 권한이 없습니다"
+        if code == 429:
+            return "Google API 사용 한도를 초과했습니다"
+        if code >= 500:
+            return f"Gemini 서버 오류 (HTTP {code})"
+        return f"Gemini 요청이 거부되었습니다 (HTTP {code})"
+    if isinstance(e, httpx.TransportError):
+        return "추출 모델 서버에 연결할 수 없습니다"
+    if isinstance(e, (ValueError, RuntimeError)):
+        return str(e)
+    return f"알 수 없는 오류 ({type(e).__name__})"
+
+
+def _set_status(note_id: str, status: str, digest, error: str | None = None) -> None:
     with get_conn() as conn:
         if digest is None:
-            conn.execute("UPDATE notes SET graph_status = ? WHERE id = ?", (status, note_id))
+            conn.execute(
+                "UPDATE notes SET graph_status = ?, graph_error = ? WHERE id = ?",
+                (status, error, note_id),
+            )
         else:
             conn.execute(
-                "UPDATE notes SET graph_status = ?, graph_hash = ? WHERE id = ?",
-                (status, digest, note_id),
+                "UPDATE notes SET graph_status = ?, graph_hash = ?, graph_error = ? WHERE id = ?",
+                (status, digest, error, note_id),
             )

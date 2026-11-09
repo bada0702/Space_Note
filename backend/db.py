@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS relations (
   pred TEXT NOT NULL,
   obj_id TEXT NOT NULL,
   note_id TEXT NOT NULL,
+  evidence TEXT,
   UNIQUE(subj_id, pred, obj_id, note_id)
 );
 CREATE INDEX IF NOT EXISTS idx_relations_subj ON relations(subj_id);
@@ -142,6 +143,17 @@ def init_db() -> None:
             )
         if "graph_hash" not in note_cols:
             conn.execute("ALTER TABLE notes ADD COLUMN graph_hash TEXT")
+        # 마이그레이션: 사용자가 거부한 항로 (기존 행은 모두 확정)
+        route_cols = {r[1] for r in conn.execute("PRAGMA table_info(routes)")}
+        if "status" not in route_cols:
+            conn.execute("ALTER TABLE routes ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'")
+        # 마이그레이션: 그래프 추출이 실패한 이유 (사용자에게 표시)
+        if "graph_error" not in note_cols:
+            conn.execute("ALTER TABLE notes ADD COLUMN graph_error TEXT")
+        # 마이그레이션: 관계의 근거 문장 (기존 관계는 근거 없음)
+        relation_cols = {r[1] for r in conn.execute("PRAGMA table_info(relations)")}
+        if "evidence" not in relation_cols:
+            conn.execute("ALTER TABLE relations ADD COLUMN evidence TEXT")
         
         # settings 테이블 마이그레이션
         settings_cols = {r[1] for r in conn.execute("PRAGMA table_info(settings)")}

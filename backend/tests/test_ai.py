@@ -318,6 +318,14 @@ def test_ollama_uses_base_url_from_settings(client, monkeypatch):
     assert ollama_client.base_url() == "http://ollama.test:11434"
 
 
+def test_patch_settings_empty_string_deletes_api_key(client):
+    client.patch("/ai/settings", json={"google_api_key": "AIza-test"}, headers=AUTH)
+    assert client.get("/ai/settings", headers=AUTH).json()["google_api_key"] != ""
+    r = client.patch("/ai/settings", json={"google_api_key": ""}, headers=AUTH)
+    assert r.status_code == 200
+    assert client.get("/ai/settings", headers=AUTH).json()["google_api_key"] == ""
+
+
 def test_rag_excerpt_collects_separate_passages(client):
     # 질문 단어가 노트 곳곳에 흩어져 있으면 한 구간이 아니라 각 구간을 골라 담는다
     from routers import ai as ai_router

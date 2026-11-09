@@ -23,8 +23,19 @@ def _startup() -> None:
     settings.reload()
     from services.vault import sync_db_with_vault
     sync_db_with_vault()
+    _purge_dangling_rows()
     from services import graph_worker
     graph_worker.start()
+
+
+def _purge_dangling_rows() -> None:
+    import logging
+    from db import get_conn
+    from services import graph_extraction
+    with get_conn() as conn:
+        removed = graph_extraction.purge_dangling_rows(conn)
+    if any(removed.values()):
+        logging.getLogger(__name__).warning("purged rows of deleted notes: %s", removed)
 
 
 @app.on_event("shutdown")

@@ -48,3 +48,27 @@ def test_constellation_notes(client):
 
 def test_constellation_notes_unknown_id(client):
     assert client.get("/constellations/nope/notes", headers=AUTH).status_code == 404
+
+
+def test_constellation_graph_has_neighbors_and_labelled_edges(client):
+    from tests.test_graph import _store_onto
+    notes = [_note(client, f"n{i}", "x") for i in range(3)]
+    _store(notes[0]["id"], [("Docker", "도구", 3, []), ("Linux", "기술", 2, []), ("Podman", "도구", 1, [])],
+           [("Docker", "사용한다", "Linux"), ("Podman", "관련있다", "Docker"), ("Linux", "관련있다", "Podman")])
+    _store(notes[1]["id"], [("Docker", "도구", 3, []), ("Linux", "기술", 2, [])], [("Docker", "사용한다", "Linux")])
+    _store_onto(notes[2]["id"], [("Docker", "instance"), ("Kafka", "instance"), ("v24", "literal")],
+                [("Docker", "버전", "v24")])
+    cid = client.get("/constellations", headers=AUTH).json()[0]["id"]
+    g = client.get(f"/constellations/{cid}/graph", headers=AUTH).json()
+    names = {n["id"]: n["name"] for n in g["nodes"]}
+    assert g["center"]["name"] == "Docker"
+    # 관계 없는 공동 개념(Kafka)과 literal 값(v24)은 빠진다
+    assert set(names.values()) == {"Docker", "Linux", "Podman"}
+    edges = {(names[e["source"]], e["pred"], names[e["target"]]): e for e in g["edges"]}
+    assert set(edges) == {("Docker", "사용한다", "Linux"), ("Podman", "관련있다", "Docker"), ("Linux", "관련있다", "Podman")}
+    assert len(edges[("Docker", "사용한다", "Linux")]["notes"]) == 2
+
+
+def test_constellation_graph_unknown_id(client):
+    assert client.get("/constellations/nope/graph", headers=AUTH).status_code == 404
+

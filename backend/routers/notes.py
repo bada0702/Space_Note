@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -12,7 +13,7 @@ from db import get_conn
 from models import ChatGPTImport, MdFilesImport, NoteCreate, NotePatch
 from services import chatgpt_share, gemini_share, vault
 from services import extraction, note_import
-from services import graph_extraction, graph_worker
+from services import graph_extraction
 from services.tagparse import extract_tags
 from services.textnorm import norm_name
 
@@ -45,8 +46,8 @@ def _sync_tags(conn, note_id: str, content: str) -> None:
         )
 
 
-def _run_extraction(note_id: str, content: str) -> None:
-    """백그라운드: 엔티티 추출 후 저장 + analysis_status 갱신."""
+def _run_extraction(note_id: str, content: str) -> bool:
+    """백그라운드: 엔티티 추출 후 저장 + analysis_status 갱신. 성공 여부를 돌려준다."""
     try:
         entities = extraction.extract_entities(content)
         now = _now()
@@ -62,16 +63,18 @@ def _run_extraction(note_id: str, content: str) -> None:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'analyzed_ai' WHERE id = ?", (note_id,)
             )
+        return True
     except Exception:
         logger.exception("entity extraction failed for note %s", note_id)
         with get_conn() as conn:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'failed' WHERE id = ?", (note_id,)
             )
+        return False
 
 
-def _run_extraction_python(note_id: str, content: str) -> None:
-    """백그라운드: 파이썬 기반 엔티티 추출 후 저장 + analysis_status 갱신."""
+def _run_extraction_python(note_id: str, content: str) -> bool:
+    """백그라운드: 파이썬 기반 엔티티 추출 후 저장 + analysis_status 갱신. 성공 여부를 돌려준다."""
     try:
         entities = extraction.extract_entities_python(content)
         now = _now()
@@ -87,12 +90,53 @@ def _run_extraction_python(note_id: str, content: str) -> None:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'analyzed_py' WHERE id = ?", (note_id,)
             )
+        return True
     except Exception:
         logger.exception("python entity extraction failed for note %s", note_id)
         with get_conn() as conn:
             conn.execute(
                 "UPDATE notes SET analysis_status = 'failed' WHERE id = ?", (note_id,)
             )
+        return False
+
+
+# ── 일괄 키워드 분석 진행 상황 ─────────────────────────────
+# BackgroundTasks는 서버 메모리에서 돌므로 진행 수도 메모리에 둔다. DB의 analysis_status='pending'은
+# 편집·볼트 동기화로도 생기고 재시작하면 처리되지 않은 채 남으므로 진행률 계산에 쓰지 않는다.
+_job_lock = threading.Lock()
+_job = {"kind": None, "total": 0, "done": 0, "failed": 0, "started_at": None}
+
+
+def _job_remaining() -> int:
+    return _job["total"] - _job["done"] - _job["failed"] if _job["kind"] else 0
+
+
+def _busy() -> Optional[dict]:
+    """일괄 분석이 아직 돌고 있으면 새로 쌓지 않는다 — 두 번 누르면 같은 노트를 중복으로 분석하게 된다."""
+    with _job_lock:
+        remaining = _job_remaining()
+    return {"queued": remaining, "running": True} if remaining > 0 else None
+
+
+def _start_batch(kind: str, rows, fn, bg: BackgroundTasks) -> dict:
+    with _job_lock:
+        _job.update(kind=kind, total=len(rows), done=0, failed=0, started_at=_now())
+    bg.add_task(_run_batch, [(r["id"], r["content"]) for r in rows], fn)
+    return {"queued": len(rows)}
+
+
+def _run_batch(items: list[tuple[str, str]], fn) -> None:
+    for nid, content in items:
+        ok = fn(nid, content)
+        with _job_lock:
+            _job["done" if ok else "failed"] += 1
+
+
+@router.get("/notes/analyze/progress")
+def analyze_progress():
+    """마지막 일괄 키워드 분석(kind: ai | python)의 진행 수. 서버가 재시작되면 초기화된다."""
+    with _job_lock:
+        return {**_job, "running": _job_remaining() > 0}
 
 
 @router.get("/notes")
@@ -112,37 +156,40 @@ def list_notes(category_id: Optional[str] = None, archived: bool = False):
     return [_row_to_note(r) for r in rows]
 
 
-def _require_graph_model() -> None:
-    reason = graph_extraction.model_ready()
-    if reason:
-        raise HTTPException(status_code=400, detail=reason)
+def _require_api_key() -> None:
+    if not extraction.has_api_key():
+        raise HTTPException(
+            status_code=400,
+            detail="AI 설정이 완료되지 않았습니다 (API 키를 저장하거나 로컬 Ollama 모델을 선택하세요)",
+        )
 
 
 @router.post("/notes/analyze")
-def analyze_all():
-    """AI 항로분석: 온톨로지가 아직 없거나 본문이 바뀐 노트를 지식 그래프 추출 대기열에 넣는다.
-
-    처리는 graph_worker가 분당 RATE_PER_MINUTE개씩 하고, 진행 상황은 GET /graph/status로 본다.
-    """
-    _require_graph_model()
+def analyze_all(bg: BackgroundTasks):
+    """내용이 있는 pending/failed/analyzed_py 노트 전체를 백그라운드로 재분석."""
+    _require_api_key()
+    if busy := _busy():
+        return busy
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, content, graph_hash FROM notes "
-            "WHERE TRIM(COALESCE(content, '')) != '' AND is_archived = 0"
+            "SELECT id, content FROM notes "
+            "WHERE TRIM(COALESCE(content, '')) != '' "
+            "AND analysis_status IN ('pending', 'failed', 'analyzed_py') "
+            "AND is_archived = 0"
         ).fetchall()
-        targets = [
-            r["id"] for r in rows
-            if r["graph_hash"] != graph_extraction.content_hash(r["content"])
-        ]
-        for nid in targets:
-            conn.execute("UPDATE notes SET graph_status = 'pending' WHERE id = ?", (nid,))
-    graph_worker.start()
-    return {"queued": len(targets)}
+        for r in rows:
+            conn.execute(
+                "UPDATE notes SET analysis_status = 'pending' WHERE id = ?",
+                (r["id"],),
+            )
+    return _start_batch("ai", rows, _run_extraction, bg)
 
 
 @router.post("/notes/analyze-python")
 def analyze_all_python(bg: BackgroundTasks):
     """내용이 있는 모든 노트를 파이썬으로 분석 (API 키 불필요)."""
+    if busy := _busy():
+        return busy
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, content FROM notes "
@@ -154,23 +201,23 @@ def analyze_all_python(bg: BackgroundTasks):
                 "UPDATE notes SET analysis_status = 'pending' WHERE id = ?",
                 (r["id"],),
             )
-    for r in rows:
-        bg.add_task(_run_extraction_python, r["id"], r["content"])
-    return {"queued": len(rows)}
+    return _start_batch("python", rows, _run_extraction_python, bg)
 
 
 @router.post("/notes/{nid}/analyze")
-def analyze_one(nid: str):
-    """이 노트만 본문이 그대로여도 다시 추출한다 (해시를 지워 강제)."""
+def analyze_one(nid: str, bg: BackgroundTasks):
+    _require_api_key()
     with get_conn() as conn:
-        if conn.execute("SELECT 1 FROM notes WHERE id = ?", (nid,)).fetchone() is None:
-            raise HTTPException(status_code=404, detail="Note not found")
-    _require_graph_model()
+        row = conn.execute(
+            "SELECT id, content FROM notes WHERE id = ?", (nid,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Note not found")
     with get_conn() as conn:
         conn.execute(
-            "UPDATE notes SET graph_status = 'pending', graph_hash = NULL WHERE id = ?", (nid,)
+            "UPDATE notes SET analysis_status = 'pending' WHERE id = ?", (nid,)
         )
-    graph_worker.start()
+    bg.add_task(_run_extraction, nid, row["content"] or "")
     return {"queued": 1}
 
 

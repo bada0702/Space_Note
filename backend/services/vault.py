@@ -89,6 +89,7 @@ def sync_db_with_vault() -> None:
     import logging
     from datetime import datetime, timezone
     from db import get_conn
+    from services import graph_extraction
     from services.tagparse import extract_tags
     from services.textnorm import norm_name
     
@@ -181,6 +182,7 @@ def sync_db_with_vault() -> None:
                         conn.execute("DELETE FROM entities WHERE note_id = ?", (dup_id,))
                         conn.execute("DELETE FROM tags WHERE note_id = ?", (dup_id,))
                         conn.execute("DELETE FROM routes WHERE note_a = ? OR note_b = ?", (dup_id, dup_id))
+                        graph_extraction.clear_note_graph(conn, dup_id)
 
                 # 카테고리가 아직 없는 노트(신규 임포트 등)만 폴더 기준으로 채워준다 —
                 # 이미 지정된 카테고리(수동 변경 포함)는 재동기화로 덮어쓰지 않는다.
@@ -236,6 +238,7 @@ def sync_db_with_vault() -> None:
                         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
                         conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))
                         conn.execute("DELETE FROM routes WHERE note_a = ? OR note_b = ?", (nid, nid))
+                        graph_extraction.clear_note_graph(conn, nid)
         else:
             if len(db_notes_by_path) > 0:
                 logger.warning("Vault directory is empty or scanned files count is 0. Skipping mass deletion of DB notes to prevent data loss.")

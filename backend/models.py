@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, StringConstraints
 
 
@@ -97,3 +97,4 @@ class ChatRequest(BaseModel):
 class RouteCreate(BaseModel):
     note_a: str
     note_b: str
+    status: Literal["confirmed", "rejected"] = "confirmed"
