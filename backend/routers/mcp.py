@@ -202,6 +202,104 @@ def _tool_create_note(title: str, content: str = "", category_id: Optional[str] 
     return json.dumps({"id": note["id"], "title": note["title"]}, ensure_ascii=False)
 
 
+_LIVE_RELATIONS = (
+    "SELECT r.subj_id, r.pred, r.obj_id, r.evidence, n.title FROM relations r "
+    "JOIN notes n ON n.id = r.note_id AND n.is_archived = 0"
+)
+GRAPH_LIMIT_MAX = 100
+PATH_HOPS_MAX = 4
+
+
+def _find_concept(conn, name: str):
+    from services.textnorm import norm_name
+    norm = norm_name(name)
+    if not norm:
+        raise ValueError("개념 이름이 비어 있습니다")
+    row = conn.execute(
+        "SELECT c.* FROM concepts c WHERE c.norm = ? AND c.kind != 'literal' UNION ALL "
+        "SELECT c.* FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id WHERE a.norm = ? LIMIT 1",
+        (norm, norm),
+    ).fetchone()
+    if row is None:  # 정확히 일치하는 개념이 없으면 이름에 포함된 것 중 가장 많이 쓰인 개념
+        row = conn.execute(
+            "SELECT c.* FROM concepts c LEFT JOIN note_concepts nc ON nc.concept_id = c.id "
+            "WHERE c.kind != 'literal' AND (c.norm LIKE ? "
+            "OR c.id IN (SELECT concept_id FROM concept_aliases WHERE norm LIKE ?)) "
+            "GROUP BY c.id ORDER BY COUNT(nc.note_id) DESC, LENGTH(c.norm) LIMIT 1",
+            (f"%{norm}%", f"%{norm}%"),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f"지식 그래프에 '{name}' 개념이 없습니다")
+    return row
+
+
+def _concept_names(conn, ids) -> dict:
+    ids = list(ids)
+    if not ids:
+        return {}
+    marks = ",".join("?" * len(ids))
+    return {r["id"]: r["name"] for r in conn.execute(f"SELECT id, name FROM concepts WHERE id IN ({marks})", ids)}
+
+
+def _tool_graph_neighbors(concept: str, limit: int = 30) -> str:
+    limit = max(1, min(int(limit), GRAPH_LIMIT_MAX))
+    with get_conn() as conn:
+        c = _find_concept(conn, concept)
+        rels = conn.execute(
+            f"{_LIVE_RELATIONS} WHERE r.subj_id = ? OR r.obj_id = ? LIMIT ?", (c["id"], c["id"], limit)
+        ).fetchall()
+        names = _concept_names(conn, {x for r in rels for x in (r["subj_id"], r["obj_id"])})
+        notes = conn.execute(
+            "SELECT n.id, n.title FROM note_concepts nc JOIN notes n ON n.id = nc.note_id "
+            "WHERE nc.concept_id = ? AND n.is_archived = 0 ORDER BY nc.weight DESC",
+            (c["id"],),
+        ).fetchall()
+    return json.dumps({
+        "concept": {"name": c["name"], "type": c["type"]},
+        "notes": [dict(n) for n in notes],
+        "relations": [{"s": names.get(r["subj_id"]), "p": r["pred"], "o": names.get(r["obj_id"]),
+                       "note": r["title"], **({"evidence": r["evidence"]} if r["evidence"] else {})}
+                      for r in rels],
+    }, ensure_ascii=False)
+
+
+def _tool_graph_path(source: str, target: str, max_hops: int = 3) -> str:
+    max_hops = max(1, min(int(max_hops), PATH_HOPS_MAX))
+    with get_conn() as conn:
+        src, dst = _find_concept(conn, source), _find_concept(conn, target)
+        adj: dict[str, list] = {}
+        for r in conn.execute(_LIVE_RELATIONS):
+            edge = (r["subj_id"], r["pred"], r["obj_id"], r["title"])
+            adj.setdefault(r["subj_id"], []).append((r["obj_id"], edge))
+            adj.setdefault(r["obj_id"], []).append((r["subj_id"], edge))
+        # 관계 방향과 무관하게 최단 경로를 찾는다 (BFS)
+        prev: dict[str, tuple] = {src["id"]: None}
+        frontier = [src["id"]]
+        for _ in range(max_hops):
+            if dst["id"] in prev:
+                break
+            nxt = []
+            for node in frontier:
+                for other, edge in adj.get(node, ()):
+                    if other not in prev:
+                        prev[other] = (node, edge)
+                        nxt.append(other)
+            frontier = nxt
+        if dst["id"] not in prev:
+            return json.dumps({"source": src["name"], "target": dst["name"], "path": None,
+                               "message": f"{max_hops}단계 안에 연결 경로가 없습니다"}, ensure_ascii=False)
+        edges, node = [], dst["id"]
+        while prev[node] is not None:
+            node, edge = prev[node]
+            edges.append(edge)
+        edges.reverse()
+        names = _concept_names(conn, {x for e in edges for x in (e[0], e[2])})
+    return json.dumps({
+        "source": src["name"], "target": dst["name"],
+        "path": [{"s": names.get(s), "p": p, "o": names.get(o), "note": t} for s, p, o, t in edges],
+    }, ensure_ascii=False)
+
+
 _CATEGORY = {"type": "string", "description": "카테고리(은하) ID. list_categories로 조회"}
 
 TOOLS: list[dict] = [
@@ -240,6 +338,28 @@ TOOLS: list[dict] = [
         "description": "노트 카테고리(은하) 목록.",
         "inputSchema": {"type": "object", "properties": {}},
         "fn": _tool_list_categories,
+    },
+    {
+        "name": "graph_neighbors",
+        "description": "지식 그래프에서 개념 하나의 이웃을 조회한다: 그 개념이 나오는 노트들과 관계 트리플(s-p-o, 출처 노트). 개념 이름은 동의어·부분 일치도 찾는다.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"concept": {"type": "string", "description": "개념 이름 (예: Docker, 컨테이너)"},
+                           "limit": {"type": "integer", "minimum": 1, "maximum": GRAPH_LIMIT_MAX, "default": 30}},
+            "required": ["concept"],
+        },
+        "fn": _tool_graph_neighbors,
+    },
+    {
+        "name": "graph_path",
+        "description": "지식 그래프에서 두 개념을 잇는 최단 관계 경로를 찾는다 (방향 무시). 각 단계의 트리플과 출처 노트를 반환.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"source": {"type": "string"}, "target": {"type": "string"},
+                           "max_hops": {"type": "integer", "minimum": 1, "maximum": PATH_HOPS_MAX, "default": 3}},
+            "required": ["source", "target"],
+        },
+        "fn": _tool_graph_path,
     },
     {
         "name": "create_note",
@@ -283,7 +403,7 @@ async def _handle(msg: dict, allow_write: bool) -> Optional[dict]:
             "protocolVersion": requested if requested in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[1],
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": SERVER_NAME, "version": "1.0.0"},
-            "instructions": "SpaceNote 개인 노트 저장소. 사용자의 기록·지식을 물으면 search_notes로 찾고 get_note로 본문을 읽는다.",
+            "instructions": "SpaceNote 개인 노트 저장소. 사용자의 기록·지식을 물으면 search_notes로 찾고 get_note로 본문을 읽는다. 개념 사이의 연결은 graph_neighbors·graph_path로 지식 그래프를 조회한다.",
         })
     if method == "ping":
         return _result(msg_id, {})

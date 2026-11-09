@@ -114,3 +114,32 @@ def test_register_aibot_preserves_other_servers(client, tmp_path):
 def test_register_aibot_rejects_bad_path(client):
     _enable(client, aibot_config="relative/path.txt")
     assert client.post("/mcp/register-aibot", headers=AUTH).status_code == 400
+
+
+def test_graph_neighbors_and_path(client):
+    from tests.test_graph import _note, _store, _store_onto
+    token = _enable(client)["token"]
+    a = _note(client, "도커", "x")
+    b = _note(client, "리눅스", "y")
+    _store(a["id"], [("Docker", "도구", 3, ["도커"]), ("Linux", "기술", 2, ())], [("Docker", "사용한다", "Linux")])
+    _store(b["id"], [("Linux", "기술", 3, ()), ("cgroups", "기술", 2, ())], [("Linux", "사용한다", "cgroups")])
+
+    r = _rpc(client, token, "tools/call", {"name": "graph_neighbors", "arguments": {"concept": "도커"}})
+    res = json.loads(r.json()["result"]["content"][0]["text"])
+    assert res["concept"]["name"] == "Docker"
+    assert res["relations"] == [{"s": "Docker", "p": "사용한다", "o": "Linux", "note": "도커"}]
+
+    r = _rpc(client, token, "tools/call", {"name": "graph_path", "arguments": {"source": "cgroups", "target": "Docker"}})
+    path = json.loads(r.json()["result"]["content"][0]["text"])["path"]
+    assert [(e["s"], e["o"]) for e in path] == [("Linux", "cgroups"), ("Docker", "Linux")]
+
+    r = _rpc(client, token, "tools/call", {"name": "graph_neighbors", "arguments": {"concept": "dock"}})
+    assert json.loads(r.json()["result"]["content"][0]["text"])["concept"]["name"] == "Docker"
+
+    # literal(값) 노드는 개념으로 찾지 않는다
+    _store_onto(b["id"], [("Linux", "instance"), ("6.8", "literal")], [("Linux", "버전", "6.8")])
+    r = _rpc(client, token, "tools/call", {"name": "graph_neighbors", "arguments": {"concept": "6.8"}})
+    assert r.json()["result"]["isError"] is True
+
+    r = _rpc(client, token, "tools/call", {"name": "graph_neighbors", "arguments": {"concept": "없는개념"}})
+    assert r.json()["result"]["isError"] is True
