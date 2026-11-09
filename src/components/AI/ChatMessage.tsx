@@ -1,13 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { AIChatMessage, ChatSource } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
 import { useAIStore } from '../../store/aiStore'
+import { renderChatMarkdown } from '../../utils/markdown'
 
 export function ChatMessage({ msg }: { msg: AIChatMessage }) {
   const isUser = msg.role === 'user'
   const { notes, createNote, setTab } = useNotesStore()
   const [saved, setSaved] = useState(false)
   const canSave = !isUser && !!msg.content && !msg.isStreaming && !msg.error
+  // AI 답변은 마크다운으로 렌더링한다 (사용자 입력과 오류 문구는 쓴 그대로)
+  const asMarkdown = !isUser && !msg.error && !!msg.content
+  const html = useMemo(() => (asMarkdown ? renderChatMarkdown(msg.content) : ''), [asMarkdown, msg.content])
 
   const handleSave = async () => {
     if (!canSave || saved) return
@@ -25,7 +29,7 @@ export function ChatMessage({ msg }: { msg: AIChatMessage }) {
       alignItems: isUser ? 'flex-end' : 'flex-start',
       marginBottom: 10,
     }}>
-      <div style={{
+      <div className={asMarkdown ? 'sn-chat-md' : undefined} style={{
         maxWidth: '80%',
         padding: '8px 12px',
         borderRadius: isUser ? '12px 12px 3px 12px' : '12px 12px 12px 3px',
@@ -34,10 +38,12 @@ export function ChatMessage({ msg }: { msg: AIChatMessage }) {
         fontSize: 14,
         lineHeight: 1.6,
         border: msg.error ? '1px solid var(--danger)44' : '1px solid transparent',
-        whiteSpace: 'pre-wrap',
+        whiteSpace: asMarkdown ? undefined : 'pre-wrap',
         wordBreak: 'break-word',
       }}>
-        {msg.content
+        {asMarkdown
+          ? <div dangerouslySetInnerHTML={{ __html: html }} />
+          : msg.content
           ? msg.content
           : msg.isStreaming
             ? <TypingDots />
