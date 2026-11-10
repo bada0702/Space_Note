@@ -45,6 +45,16 @@ def _query_ngrams(query: str, max_n: int = 4) -> set[str]:
     return grams
 
 
+def mentions(norm: str, qnorm: str, grams: set[str]) -> bool:
+    """정규화한 이름 norm이 본문(qnorm, 영문 n-gram grams)에 나오는가.
+
+    영문·숫자만인 이름은 단어 경계를 지킨다 ('ai'가 'mail'에 걸리지 않게), 그 외는 2자 이상 부분 일치.
+    """
+    if _ASCII.fullmatch(norm):
+        return norm in grams
+    return len(norm) >= 2 and norm in qnorm
+
+
 def match_seeds(conn, query: str) -> dict[str, ConceptHit]:
     """질문에 이름·동의어가 들어 있는 개념 → 출발 개념 (점수 1.0)."""
     if not query.strip():
@@ -55,15 +65,7 @@ def match_seeds(conn, query: str) -> dict[str, ConceptHit]:
         "SELECT a.norm AS norm, a.alias AS alias, c.id AS id, c.name AS name "
         "FROM concept_aliases a JOIN concepts c ON c.id = a.concept_id"
     ).fetchall()
-    matched = []
-    for r in rows:
-        n = r["norm"]
-        if _ASCII.fullmatch(n):
-            hit = n in grams          # 영문은 단어 경계를 지킨다 ('ai'가 'mail'에 걸리지 않게)
-        else:
-            hit = len(n) >= 2 and n in qnorm
-        if hit:
-            matched.append(r)
+    matched = [r for r in rows if mentions(r["norm"], qnorm, grams)]
     seeds: dict[str, ConceptHit] = {}
     for r in matched:
         # 더 긴 일치('그래프 DB')에 포함된 짧은 동의어('DB')는 다른 개념을 가리키면 버린다

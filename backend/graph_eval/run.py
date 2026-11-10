@@ -82,14 +82,14 @@ def model_fn(model: str):
     """모델 이름 → (호출 함수, 표시 이름). 설정 화면의 추출 모델과 상관없이 고른 모델을 직접 부른다."""
     if model.startswith("gemini"):
         name = ge.GRAPH_MODEL if model == "gemini" else model
-        return (lambda content: ge._call_gemini(name, content)), name
+        return (lambda content, known=(): ge._call_gemini(name, ge.build_prompt(content, known))), name
     if model.startswith("ollama:"):
         name = model.split(":", 1)[1]
 
-        def call(content: str) -> str:
+        def call(content: str, known=()) -> str:
             resp = httpx.post(f"{OLLAMA_URL}/api/chat", timeout=900, json={
                 "model": name,
-                "messages": [{"role": "user", "content": ge.PROMPT + content[:ge.MAX_INPUT_CHARS]}],
+                "messages": [{"role": "user", "content": ge.build_prompt(content, known)}],
                 "format": "json",
                 "stream": False,
                 "options": {"temperature": 0.1},
@@ -108,7 +108,7 @@ def run(cases: list[dict], call, runs: int) -> list[dict]:
             started = time.monotonic()
             error = None
             try:
-                graph = ge.parse_graph(call(case["text"]), case["text"])
+                graph = ge.parse_graph(call(case["text"], case.get("known_concepts", [])), case["text"])
             except Exception as e:  # 모델 오류도 평가 결과의 일부로 남긴다
                 error = f"{type(e).__name__}: {e}"[:300]
                 graph = {"concepts": [], "relations": []}

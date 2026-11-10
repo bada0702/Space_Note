@@ -114,7 +114,7 @@ def test_run_and_report_with_fake_model():
         "edges": [{"s": "Docker", "p": "인스턴스이다", "o": "컨테이너 기술",
                    "q": "Docker는 컨테이너 기술의 대표적인 구현이다."}],
     }, ensure_ascii=False)
-    results = run.run([case], lambda text: answer, runs=2)
+    results = run.run([case], lambda text, known=(): answer, runs=2)
     summary = run.summarize(results, 2)
     assert summary["overall"]["precision"]["mean"] == 1.0
     assert summary["overall"]["recall"]["mean"] == 1 / len(case["relations"])
@@ -122,3 +122,10 @@ def test_run_and_report_with_fake_model():
     md = run.markdown({"model": "fake", "started": "t", "runs": 2, "cases": ["SAMPLE_DOCKER"],
                        "gold_status": "sample", "errors": 0}, summary, results)
     assert "관계 정밀도 | 100%" in md and "놓친 필수 관계" in md
+
+
+def test_run_passes_known_concepts_to_model():
+    case = run.load_cases(["DOCKER_INSTALL"])[0]
+    seen = []
+    run.run([case], lambda text, known=(): seen.append(list(known)) or '{"nodes": [], "edges": []}', runs=1)
+    assert seen == [case["known_concepts"]]

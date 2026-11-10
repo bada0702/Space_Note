@@ -41,7 +41,7 @@ def test_parse_graph_keeps_evidence_only_when_quoted_from_note():
 def test_process_note_stores_evidence(client, monkeypatch):
     from services import graph_extraction as ge
     n = _note(client, "노트", "Docker는 Linux 커널 기능을 사용한다.")
-    monkeypatch.setattr(ge, "call_model", lambda content: json.dumps({
+    monkeypatch.setattr(ge, "call_model", lambda content, known=(): json.dumps({
         "nodes": [{"name": "Docker", "kind": "instance"}, {"name": "Linux", "kind": "instance"}],
         "edges": [{"s": "Docker", "p": "사용한다", "o": "Linux", "q": "Docker는 Linux 커널 기능을 사용한다."}],
     }))
@@ -56,7 +56,7 @@ def test_failure_reason_is_stored_and_cleared(client, monkeypatch):
     from services import graph_extraction as ge
     n = _note(client, "노트", "본문")
 
-    def _quota(content):
+    def _quota(content, known=()):
         req = httpx.Request("POST", "https://example.invalid")
         raise httpx.HTTPStatusError("quota", request=req, response=httpx.Response(429, request=req))
     monkeypatch.setattr(ge, "call_model", _quota)
@@ -65,11 +65,11 @@ def test_failure_reason_is_stored_and_cleared(client, monkeypatch):
     status = client.get("/graph/status", headers=AUTH).json()
     assert status["failures"] == [{"id": n["id"], "title": "노트", "error": "Google API 사용 한도를 초과했습니다"}]
 
-    monkeypatch.setattr(ge, "call_model", lambda content: "깨진 응답")
+    monkeypatch.setattr(ge, "call_model", lambda content, known=(): "깨진 응답")
     ge.process_note(n["id"])
     assert client.get(f"/notes/{n['id']}", headers=AUTH).json()["graph_error"] == "모델 응답 형식이 올바르지 않습니다"
 
-    monkeypatch.setattr(ge, "call_model", lambda content: json.dumps(
+    monkeypatch.setattr(ge, "call_model", lambda content, known=(): json.dumps(
         {"nodes": [{"name": "Redis", "kind": "instance", "type": "도구", "weight": 3}], "edges": []}))
     assert ge.process_note(n["id"]) == "done"
     assert client.get(f"/notes/{n['id']}", headers=AUTH).json()["graph_error"] is None
@@ -319,7 +319,7 @@ def test_graph_analyze_note_endpoint(client, monkeypatch):
     assert r.status_code == 400 and "API 키" in r.json()["detail"]
 
     monkeypatch.setattr(ge, "model_ready", lambda: None)
-    monkeypatch.setattr(ge, "call_model", lambda content: json.dumps(
+    monkeypatch.setattr(ge, "call_model", lambda content, known=(): json.dumps(
         {"nodes": [{"name": "Redis", "kind": "instance", "type": "도구", "weight": 3}], "edges": []}))
     assert client.post("/graph/notes/nope", headers=AUTH).status_code == 404
     assert client.post(f"/graph/notes/{n['id']}", headers=AUTH).json() == {"queued": 1}

@@ -204,6 +204,8 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
   별도 노드로 만들어 인스턴스이다/하위클래스이다/관련 관계로 잇는다.
 - 소프트웨어·기술·제품 이름은 널리 쓰이는 공식 영문 표기를 name으로 쓴다(예: 도커 → Docker, 올라마 → Ollama).
 - "방법", "코드", "문제", "설명", "예시" 같은 일반어는 노드로 넣지 않는다.
+- name은 그 대상을 가리키는 가장 짧은 표준 이름으로 쓴다. "Docker 설치", "RAG 구축 방법" 같은 활동·작업 명사구는 노드로 만들지 말고, 대상(Docker, RAG)만 노드로 두고 내용은 관계로 나타낸다.
+- 세 단어 이상인 name은 제품명·책 제목 같은 고유명사일 때만 쓴다.
 
 엣지 규칙 (최대 {MAX_RELATIONS}개, s와 o는 반드시 위 nodes의 name):
 - 인스턴스이다: instance → class (s는 o의 한 사례)
@@ -214,8 +216,42 @@ PROMPT = f"""다음 노트를 온톨로지(Class / Instance / Literal 노드와 
 - q: 그 엣지의 근거가 되는 노트 속 문장을 고치지 말고 그대로 옮긴다. 근거 문장이 없으면 빈 문자열.
 - 다른 설명 없이 JSON만 출력.
 
-노트:
 """
+KNOWN_LIMIT = 50
+_KNOWN_HEADER = (
+    "이미 쓰는 이름 (노트의 대상이 아래 이름과 같은 대상이면 그 이름을 그대로 name으로 쓴다. "
+    "같은 대상이 아니면 무시한다):"
+)
+
+
+def build_prompt(content: str, known=()) -> str:
+    """추출 규칙 + (있으면) 이미 쓰는 개념 이름 목록 + 노트 본문."""
+    block = "".join([_KNOWN_HEADER + "\n", *(f"- {k}\n" for k in known), "\n"]) if known else ""
+    return PROMPT + block + "노트:\n" + content[:MAX_INPUT_CHARS]
+
+
+def known_concepts(conn, content: str, limit: int = KNOWN_LIMIT) -> list[str]:
+    """본문에 이름·동의어가 나오는 기존 개념의 표준 이름 (노트 사이 표기 통일용).
+
+    2개 이상 활성 노트에서 쓰이고 이름이 3단어 미만인 개념만 — 재분석 중 남아 있는
+    한 노트짜리·명사구 이름이 다시 퍼지지 않게. 노트 수 내림차순, 같으면 이름순.
+    """
+    from services.graph_retrieval import _query_ngrams, mentions  # graph_retrieval이 이 모듈을 import한다
+
+    qnorm, grams = norm_name(content), _query_ngrams(content)
+    rows = conn.execute(
+        "SELECT c.id AS id, c.name AS name, COUNT(DISTINCT nc.note_id) AS df FROM concepts c "
+        "JOIN note_concepts nc ON nc.concept_id = c.id "
+        "JOIN notes n ON n.id = nc.note_id AND n.is_archived = 0 "
+        "WHERE c.kind != 'literal' GROUP BY c.id HAVING df >= 2"
+    ).fetchall()
+    forms: dict[str, set[str]] = {}
+    for r in conn.execute("SELECT concept_id, norm FROM concept_aliases"):
+        forms.setdefault(r[0], set()).add(r[1])
+    hits = [r for r in rows if len(r["name"].split()) < 3
+            and any(mentions(f, qnorm, grams) for f in forms.get(r["id"], {norm_name(r["name"])}))]
+    hits.sort(key=lambda r: (-r["df"], r["name"]))
+    return [r["name"] for r in hits[:limit]]
 
 
 class GraphParseError(ValueError):
@@ -254,26 +290,26 @@ def model_ready() -> str | None:
     return None
 
 
-def call_model(content: str) -> str:
+def call_model(content: str, known=()) -> str:
     """설정된 추출 모델(Gemini, Claude, GPT, Ollama)에 요청해 응답 텍스트를 돌려준다."""
     model = graph_model()
-    prompt = PROMPT + content[:MAX_INPUT_CHARS]
+    prompt = build_prompt(content, known)
     if ollama_client.is_ollama_model(model):
         return ollama_client.chat_json(model, prompt)
     if model.startswith("claude"):
         return anthropic_client.complete_json(model, prompt)
     if model.startswith("gpt"):
         return openai_client.complete_json(model, prompt)
-    return _call_gemini(model, content)
+    return _call_gemini(model, prompt)
 
 
-def _call_gemini(model: str, content: str) -> str:
+def _call_gemini(model: str, prompt: str) -> str:
     """Gemini 추출 요청. 혼잡/한도 오류는 백오프 재시도."""
     key = gemini_client._api_key()
     if not key:
         raise ValueError("Google API 키가 설정되지 않았습니다")
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": PROMPT + content[:MAX_INPUT_CHARS]}]}],
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.1},
     }
     resp = None
@@ -634,12 +670,14 @@ def process_note(note_id: str) -> str:
         _set_status(note_id, "done", digest)
         return "done"
 
+    with get_conn() as conn:
+        known = known_concepts(conn, content)
     try:
         try:
-            graph = parse_graph(call_model(content), content)
+            graph = parse_graph(call_model(content, known), content)
         except GraphParseError:
             logger.info("graph parse failed for %s, retrying once", note_id)
-            graph = parse_graph(call_model(content), content)
+            graph = parse_graph(call_model(content, known), content)
     except Exception as e:
         logger.exception("graph extraction failed for note %s", note_id)
         _set_status(note_id, "failed", None, describe_failure(e))

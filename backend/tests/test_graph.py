@@ -197,7 +197,7 @@ def test_process_note_calls_model_and_skips_unchanged(client, monkeypatch):
     n = _note(client, "RAG 정리", "RAG는 임베딩을 사용한다")
     calls = []
 
-    def fake_call(content):
+    def fake_call(content, known=()):
         calls.append(content)
         return json.dumps({
             "concepts": [{"name": "RAG", "type": "기술", "weight": 3},
@@ -216,7 +216,7 @@ def test_process_note_retries_bad_json_then_fails(client, monkeypatch):
     from services import graph_extraction as ge
     n = _note(client, "X", "내용")
     calls = []
-    monkeypatch.setattr(ge, "call_model", lambda c: calls.append(c) or "not json")
+    monkeypatch.setattr(ge, "call_model", lambda c, known=(): calls.append(c) or "not json")
     assert ge.process_note(n["id"]) == "failed"
     assert len(calls) == 2
     assert _count("SELECT COUNT(*) FROM notes WHERE graph_status = 'failed'") == 1
@@ -286,7 +286,7 @@ def test_cancel_during_extraction_discards_result(client, monkeypatch):
     from services import graph_extraction as ge
     n = _note(client, "노트", "RAG 정리")
 
-    def cancelled_while_waiting(content):
+    def cancelled_while_waiting(content, known=()):
         with get_conn() as conn:
             conn.execute("UPDATE notes SET graph_status = 'idle' WHERE id = ?", (n["id"],))
         return json.dumps({"nodes": [{"name": "RAG", "kind": "class"}], "edges": []})
@@ -616,3 +616,50 @@ def test_alias_merge_in_one_note_keeps_relation_directions_valid(client):
         kind = conn.execute("SELECT kind FROM concepts WHERE name = '벡터DB'").fetchone()[0]
     assert bad == 0
     assert kind == "class"   # 합쳐진 항목 중 class가 있으면 class
+
+
+# ── 기존 개념 목록과 프롬프트 ─────────────────────────────────
+
+def test_known_concepts_filters_and_orders(client):
+    from db import get_conn
+    from services import graph_extraction as ge
+    notes = [_note(client, f"N{i}", "본문") for i in range(3)]
+    for n in notes:
+        _store_onto(n["id"], [("Docker", "instance")])
+    for n in notes[:2]:
+        _store_onto(n["id"], [("Docker", "instance"), ("Linux", "instance"),
+                              ("Docker 설치 가이드 문서", "instance")])
+    _store_onto(notes[2]["id"], [("Docker", "instance"), ("Solo", "instance")])
+    with get_conn() as conn:
+        known = ge.known_concepts(conn, "도커 말고 Docker와 Linux, Solo, Docker 설치 가이드 문서")
+    assert known == ["Docker", "Linux"]
+
+
+def test_known_concepts_respect_word_boundary(client):
+    from db import get_conn
+    from services import graph_extraction as ge
+    for i in range(2):
+        _store_onto(_note(client, f"N{i}", "본문")["id"], [("AI", "class")])
+    with get_conn() as conn:
+        assert ge.known_concepts(conn, "mail 서버 설정") == []
+        assert ge.known_concepts(conn, "AI 모델 설정") == ["AI"]
+
+
+def test_build_prompt_includes_rules_and_known():
+    from services import graph_extraction as ge
+    p = ge.build_prompt("본문", ["Docker"])
+    assert "가장 짧은 표준 이름" in p and "이미 쓰는 이름" in p and "- Docker" in p
+    assert p.endswith("노트:\n본문")
+    assert "이미 쓰는 이름" not in ge.build_prompt("본문")
+
+
+def test_process_note_passes_known_concepts(client, monkeypatch):
+    from services import graph_extraction as ge
+    for i in range(2):
+        _store_onto(_note(client, f"N{i}", "본문")["id"], [("Docker", "instance")])
+    n = _note(client, "새 노트", "Docker 이미지 정리")
+    seen = []
+    monkeypatch.setattr(ge, "call_model",
+                        lambda content, known=(): seen.append(list(known)) or '{"nodes": [], "edges": []}')
+    ge.process_note(n["id"])
+    assert seen == [["Docker"]]
