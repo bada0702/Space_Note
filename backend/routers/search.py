@@ -188,50 +188,64 @@ class _PairEvidence:
             "WHERE t.norm != '' AND n.is_archived = 0"
         ).fetchall()
         concept_rows = conn.execute(
-            "SELECT nc.note_id AS note_id, c.id AS cid, c.name AS name FROM note_concepts nc "
+            "SELECT nc.note_id AS note_id, c.id AS cid, c.name AS name, nc.weight AS weight "
+            "FROM note_concepts nc "
             "JOIN concepts c ON c.id = nc.concept_id AND c.kind != 'literal' "
             "JOIN notes n ON n.id = nc.note_id AND n.is_archived = 0"
         ).fetchall()
+        # 관계는 그 관계를 추출한 노트(note_id)와 함께 읽는다 — 근거를 그 노트에 묶기 위해
         relation_rows = conn.execute(
-            "SELECT r.subj_id AS s, r.pred AS p, r.obj_id AS o, MAX(r.evidence) AS evidence "
+            "SELECT r.subj_id AS s, r.pred AS p, r.obj_id AS o, r.note_id AS note_id, r.evidence AS evidence "
             "FROM relations r JOIN notes n ON n.id = r.note_id AND n.is_archived = 0 "
-            "JOIN concepts co ON co.id = r.obj_id AND co.kind != 'literal' "
-            "GROUP BY r.subj_id, r.pred, r.obj_id"
+            "JOIN concepts co ON co.id = r.obj_id AND co.kind != 'literal'"
         ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM notes WHERE is_archived = 0").fetchone()[0] or 1
 
         concept_notes: dict[str, set[str]] = defaultdict(set)
         concept_name: dict[str, str] = {}
+        weight_of: dict[tuple[str, str], int] = {}  # (노트, 개념) → 그 노트에서의 중요도 1~3
         for r in concept_rows:
             concept_notes[r["cid"]].add(r["note_id"])
             concept_name[r["cid"]] = r["name"]
+            weight_of[(r["note_id"], r["cid"])] = r["weight"]
         self.graph_notes: set[str] = {r["note_id"] for r in concept_rows}
 
         self.hubs = _hub_concepts(concept_notes, total)
+
+        def link_strength(cid: str, a: str, b: str) -> float:
+            """개념 cid로 잇는 a–b 연결의 세기: 희소성 × 두 노트 중 낮은 중요도."""
+            return idf(total, len(concept_notes[cid])) * min(weight_of.get((a, cid), 1),
+                                                              weight_of.get((b, cid), 1)) / 3
 
         self.concepts: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
         for cid, note_ids in concept_notes.items():
             if cid in self.hubs:
                 continue
-            weight = idf(total, len(note_ids))
             for a, b in combinations(sorted(note_ids), 2):
-                self.concepts[(a, b)][concept_name[cid]] = weight
+                self.concepts[(a, b)][concept_name[cid]] = link_strength(cid, a, b)
 
-        # 쌍 → {관계 라벨: 강도}, 라벨 → 근거 문장
+        # 쌍 → {관계 라벨: 점수}, 라벨 → 근거 문장 / 관계 종류의 강도(선 종류 판정용)
+        # 노트 a에서 추출된 관계는 a와, 그 관계의 주어·목적어 개념을 가진 다른 노트만 잇는다
         self.relations: dict[tuple[str, str], dict[str, float]] = defaultdict(dict)
         self.evidence: dict[str, str] = {}
+        self.label_strength: dict[str, float] = {}
         for r in relation_rows:
             if r["s"] == r["o"] or r["s"] in self.hubs or r["o"] in self.hubs:
                 continue
-            s_notes, o_notes = concept_notes.get(r["s"], set()), concept_notes.get(r["o"], set())
             label = f"{concept_name[r['s']]} —{r['p']}→ {concept_name[r['o']]}"
             strength = predicate_strength(r["p"])
-            if r["evidence"]:
+            self.label_strength[label] = strength
+            if r["evidence"] and label not in self.evidence:
                 self.evidence[label] = r["evidence"]
-            for a in s_notes:
-                for b in o_notes:
-                    if a != b:
-                        self.relations[tuple(sorted((a, b)))][label] = strength
+            a = r["note_id"]
+            for cid in (r["s"], r["o"]):
+                for b in concept_notes.get(cid, ()):
+                    if b == a:
+                        continue
+                    key = tuple(sorted((a, b)))
+                    value = strength * link_strength(cid, a, b)
+                    if value > self.relations[key].get(label, 0.0):
+                        self.relations[key][label] = value
 
         norm_notes: dict[str, set[str]] = defaultdict(set)
         norm_display: dict[str, str] = {}
@@ -276,7 +290,7 @@ class _PairEvidence:
 
     def kind(self, k: tuple[str, str]) -> str:
         """성도에서 선을 구분해 그릴 근거 종류: relation(타입 관계) > concept > keyword > none(확정만)."""
-        if any(s >= 1.0 for s in self.relations.get(k, {}).values()):
+        if any(self.label_strength[label] >= 1.0 for label in self.relations.get(k, {})):
             return "relation"
         if k in self.concepts or k in self.relations:
             return "concept"

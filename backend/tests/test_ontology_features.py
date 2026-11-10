@@ -129,22 +129,56 @@ def test_routes_link_notes_by_shared_concept_and_relation(client):
     assert r["shared_concepts"] == ["Embedding"]
     assert "RAG —사용한다→ Embedding" in r["relations"]
 
-    # 개념 공유 없이 관계로만: FAISS 노트(FAISS) ↔ RAG 노트(Embedding)
-    r = _route(routes, rag["id"], faiss["id"])
-    assert r["shared_concepts"] == []
+    # 임베딩 노트가 말한 관계(FAISS→Embedding)는 FAISS를 가진 FAISS 노트와 잇는다
+    r = _route(routes, emb["id"], faiss["id"])
+    assert r["shared_concepts"] == ["FAISS"]
     assert r["relations"] == ["FAISS —사용한다→ Embedding"]
 
     assert not any(other["id"] in (x["note_a"], x["note_b"]) for x in routes)
+
+
+def test_relation_from_third_note_does_not_link(client):
+    # FAISS→Embedding은 임베딩 노트에서 나온 관계다 — RAG 노트(Embedding)와
+    # FAISS 노트(FAISS)는 그 관계를 말하지 않았으므로 이어지지 않는다
+    rag, emb, faiss, other = _graph_fixture(client)
+    routes = client.get("/discoveries/routes", headers=AUTH).json()
+    assert _route(routes, rag["id"], faiss["id"]) is None
+
+
+def test_mentioned_only_concept_links_weaker(client):
+    x, z, y = (_note(client, t, "본문") for t in ("X", "Z", "Y"))
+    _store(x["id"], [("Shared", "개념", 3, [])])
+    _store(z["id"], [("Shared", "개념", 3, [])])
+    _store(y["id"], [("Shared", "개념", 1, [])])   # 언급만 — 나중에 만들어 최근 순으로는 앞선다
+    d = client.get(f"/discoveries?note_id={x['id']}", headers=AUTH).json()
+    assert [n["note_id"] for n in d] == [z["id"], y["id"]]
+
+
+def test_relation_to_rare_concept_links_stronger(client):
+    from db import get_conn
+    from routers.search import _PairEvidence
+    a, b, c = (_note(client, t, "본문") for t in ("A", "B", "C"))
+    _store(a["id"], [("Alpha", "도구", 2, []), ("Rare", "기술", 2, []), ("Common", "기술", 2, [])],
+           [("Alpha", "사용한다", "Rare"), ("Alpha", "사용한다", "Common")])
+    _store(b["id"], [("Rare", "기술", 2, [])])
+    _store(c["id"], [("Common", "기술", 2, [])])
+    for i in range(3):
+        _store(_note(client, f"W{i}", "본문")["id"], [("Common", "기술", 2, [])])
+    with get_conn() as conn:
+        ev = _PairEvidence(conn)
+    ab = ev.relations[tuple(sorted((a["id"], b["id"])))]["Alpha —사용한다→ Rare"]
+    ac = ev.relations[tuple(sorted((a["id"], c["id"])))]["Alpha —사용한다→ Common"]
+    assert ab > ac
 
 
 def test_discoveries_use_concepts_and_relations(client):
     rag, emb, faiss, other = _graph_fixture(client)
     d = client.get(f"/discoveries?note_id={rag['id']}", headers=AUTH).json()
 
-    # 개념 공유(Embedding) + 관계가 있는 임베딩 노트가 관계만 있는 FAISS 노트보다 앞선다
-    assert [x["note_id"] for x in d] == [emb["id"], faiss["id"]]
+    # RAG 노트는 Embedding을 공유하고 관계(RAG→Embedding)를 말한 임베딩 노트와만 이어진다
+    assert [x["note_id"] for x in d] == [emb["id"]]
     assert d[0]["shared_concepts"] == ["Embedding"]
-    assert d[1]["shared_concepts"] == [] and d[1]["relations"] == ["FAISS —사용한다→ Embedding"]
+    assert "RAG —사용한다→ Embedding" in d[0]["relations"]
 
     all_ids = {x["note_id"] for x in client.get("/discoveries", headers=AUTH).json()}
     assert all_ids == {rag["id"], emb["id"], faiss["id"]}
