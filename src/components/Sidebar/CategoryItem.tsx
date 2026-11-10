@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Category, NoteSummary } from '../../types'
 import { useNotesStore } from '../../store/notesStore'
 import { useCategoriesStore } from '../../store/categoriesStore'
@@ -104,7 +105,10 @@ export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId,
   const [editing, setEditing] = useState(false)
   const [nameValue, setNameValue] = useState(category.name)
   const [dragOver, setDragOver] = useState(false)
-  const [colorPickerOpen, setColorPickerOpen] = useState(false)
+  // 팔레트 위치(화면 좌표). null이면 닫힘 — 사이드바 overflow/쌓임 맥락에 가려지지 않게 body에 포털로 띄운다
+  const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null)
+  const colorPickerOpen = pickerPos !== null
+  const setColorPickerOpen = (open: boolean) => { if (!open) setPickerPos(null) }
   const { setTab, setStarMapFilter } = useNotesStore()
   const { updateCategory, deleteCategory } = useCategoriesStore()
 
@@ -194,23 +198,31 @@ export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId,
             type="button"
             title="은하 색상 변경"
             aria-label="은하 색상 변경"
-            onClick={e => { e.stopPropagation(); setColorPickerOpen(o => !o) }}
+            onClick={e => {
+              e.stopPropagation()
+              if (colorPickerOpen) { setPickerPos(null); return }
+              const r = e.currentTarget.getBoundingClientRect()
+              // 팔레트 크기(약 120×70) — 화면 아래/오른쪽 끝에서는 안쪽으로 당긴다
+              const top = r.bottom + 6 + 80 > window.innerHeight ? r.top - 80 : r.bottom + 6
+              const left = Math.min(r.left - 6, window.innerWidth - 130)
+              setPickerPos({ top, left })
+            }}
             style={{
               width: '9px', height: '9px', borderRadius: '50%', cursor: 'pointer',
               background: category.color ?? 'var(--text-tertiary)',
               boxShadow: `0 0 0 3px color-mix(in srgb, ${category.color ?? 'transparent'} 22%, transparent)`,
             }}
           />
-          {colorPickerOpen && (
+          {pickerPos && createPortal(
             <>
               <div
-                style={{ position: 'fixed', inset: 0, zIndex: 10 }}
+                style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
                 onClick={e => { e.stopPropagation(); setColorPickerOpen(false) }}
               />
               <div
                 onClick={e => e.stopPropagation()}
                 style={{
-                  position: 'absolute', top: '16px', left: '-6px', zIndex: 11,
+                  position: 'fixed', top: pickerPos.top, left: pickerPos.left, zIndex: 9999,
                   display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px',
                   padding: '8px', borderRadius: '8px',
                   background: 'var(--bg-panel)', border: '1px solid var(--border)',
@@ -232,7 +244,8 @@ export function CategoryItem({ category, notes, onDoubleClickNote, activeNoteId,
                   />
                 ))}
               </div>
-            </>
+            </>,
+            document.body,
           )}
         </span>
         {editing ? (

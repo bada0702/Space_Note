@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"메인 창 권한 — vault 폴더 선택(dialog) 허용","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}

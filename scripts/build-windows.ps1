@@ -6,6 +6,7 @@
 # 필요  : (1회 설치) Python 3.12, Node 20, Rust(rustup), Visual Studio 2022 Build Tools(C++ 워크로드)
 #         관리자 권한 불필요
 # 결과  : src-tauri\target\release\bundle\nsis\SpaceNote_<버전>_x64-setup.exe
+#         WebView2 런타임·백엔드·SQLite·한국어 형태소 모델을 모두 포함 → 인터넷 없이 설치 가능
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -18,8 +19,16 @@ function Invoke-Step([string]$Name, [scriptblock]$Block) {
 }
 
 # 1. 사전 점검
+# Python: 3.12 우선, 없으면 3.13
+$PyVer = $null
+$ErrorActionPreference = 'Continue'  # 없는 버전의 stderr가 Stop 모드에서 스크립트를 중단시키지 않게
+foreach ($v in @('3.12', '3.13')) {
+    & py "-$v" --version 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { $PyVer = $v; break }
+}
+$ErrorActionPreference = 'Stop'
+if (-not $PyVer) { throw 'Python 3.12/3.13 없음 → https://www.python.org/downloads/' }
 foreach ($cmd in @(
-    @{ Exe = 'py'; Args = @('-3.12', '--version'); Hint = 'Python 3.12: https://www.python.org/downloads/' },
     @{ Exe = 'node'; Args = @('--version'); Hint = 'Node 20: https://nodejs.org/' },
     @{ Exe = 'cargo'; Args = @('--version'); Hint = 'Rust: https://rustup.rs/ (+ VS 2022 Build Tools C++)' }
 )) {
@@ -31,7 +40,7 @@ foreach ($cmd in @(
 # 2. 백엔드 빌드용 venv
 $Venv = Join-Path $Root 'backend\.venv-build'
 $Py = Join-Path $Venv 'Scripts\python.exe'
-if (-not (Test-Path $Py)) { Invoke-Step 'venv 생성' { py -3.12 -m venv $Venv } }
+if (-not (Test-Path $Py)) { Invoke-Step 'venv 생성' { py "-$PyVer" -m venv $Venv } }
 Invoke-Step '백엔드 의존성 설치' { & $Py -m pip install -q -r backend\requirements.txt pyinstaller }
 
 # 3. PyInstaller (onedir)
