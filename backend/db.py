@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS settings (
   graph_model TEXT NOT NULL DEFAULT 'gemini-3.1-flash-lite',
   ollama_custom_models TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  note_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  file_path TEXT,
+  mime TEXT,
+  size INTEGER NOT NULL DEFAULT 0,
+  url TEXT,
+  text_content TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 """
 
 

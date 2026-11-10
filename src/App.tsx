@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar/Sidebar'
 import { EditorTabs } from './components/Editor/EditorTabs'
 import { NoteEditor } from './components/Editor/NoteEditor'
 import { NotePreview } from './components/Editor/NotePreview'
+import { SatellitePanel } from './components/Editor/SatellitePanel'
 import { VaultSetup } from './components/Setup/VaultSetup'
 import { StarMapCanvas } from './components/StarMap/StarMapCanvas'
 import { ChatPanel } from './components/AI/ChatPanel'
@@ -43,6 +44,7 @@ function MainPanel() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'edit' && <NoteEditor />}
         {activeTab === 'preview' && <NotePreview />}
+        {activeTab === 'satellite' && <SatellitePanel />}
         {activeTab === 'starmap' && <StarMapCanvas />}
       </div>
     </div>

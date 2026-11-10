@@ -17,6 +17,7 @@ from services import extraction, note_import
 from services import graph_extraction
 from services.tagparse import extract_tags
 from services.textnorm import norm_name
+from services import attachments as attach_svc
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -65,9 +66,11 @@ def _sync_tags(conn, note_id: str, content: str) -> None:
 
 
 def _run_extraction(note_id: str, content: str) -> bool:
-    """백그라운드: 엔티티 추출 후 저장 + analysis_status 갱신. 성공 여부를 돌려준다."""
+    """백그라운드: 노트 본문 + 위성 텍스트로 엔티티 추출 후 저장 + analysis_status 갱신. 성공 여부를 돌려준다."""
     try:
-        entities = extraction.extract_entities(content)
+        with get_conn() as conn:
+            extra = attach_svc.indexable_context(conn, note_id)
+        entities = extraction.extract_entities(content + extra)
         now = _now()
         with get_conn() as conn:
             conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))
@@ -94,7 +97,9 @@ def _run_extraction(note_id: str, content: str) -> bool:
 def _run_extraction_python(note_id: str, content: str) -> bool:
     """백그라운드: 파이썬 기반 엔티티 추출 후 저장 + analysis_status 갱신. 성공 여부를 돌려준다."""
     try:
-        entities = extraction.extract_entities_python(content)
+        with get_conn() as conn:
+            extra = attach_svc.indexable_context(conn, note_id)
+        entities = extraction.extract_entities_python(content + extra)
         now = _now()
         with get_conn() as conn:
             conn.execute("DELETE FROM entities WHERE note_id = ?", (note_id,))
@@ -406,6 +411,13 @@ def delete_note(nid: str):
         row = conn.execute("SELECT path FROM notes WHERE id = ?", (nid,)).fetchone()
         if row is not None:
             vault.delete_md(row["path"])
+        # 위성(첨부) 파일 + 행 정리
+        att_rows = conn.execute(
+            "SELECT file_path FROM attachments WHERE note_id = ?", (nid,)
+        ).fetchall()
+        for a in att_rows:
+            attach_svc.delete_file(a["file_path"])
+        conn.execute("DELETE FROM attachments WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM notes WHERE id = ?", (nid,))
         conn.execute("DELETE FROM entities WHERE note_id = ?", (nid,))
         conn.execute("DELETE FROM tags WHERE note_id = ?", (nid,))

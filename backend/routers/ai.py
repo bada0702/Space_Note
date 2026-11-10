@@ -11,6 +11,7 @@ from db import get_conn
 from models import SettingsPatch, ChatRequest
 from services import anthropic_client, gemini_client, graph_retrieval, ollama_client, openai_client
 from services.extraction import kiwi, is_korean_stopword_or_ending, strip_korean_particles
+from services import attachments as attach_svc
 
 router = APIRouter()
 
@@ -309,7 +310,8 @@ def _build_system(req: ChatRequest) -> tuple[str, list[dict]]:
                 (req.context_note_id,),
             ).fetchone()
             if row:
-                parts.append(f"[현재 노트] {row['title']}\n{row['content']}")
+                extra = attach_svc.indexable_context(conn, req.context_note_id)
+                parts.append(f"[현재 노트] {row['title']}\n{row['content']}{extra}")
 
         if req.use_rag:
             # 이번 질문으로 먼저 찾는다 — 앞 질문을 늘 합치면 주제가 바뀌어도(TTS → SMB) 앞 주제 노트가 섞인다.

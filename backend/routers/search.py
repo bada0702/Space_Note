@@ -30,7 +30,9 @@ def search(q: str = "", all_words: bool = False):
         where, params = f"(({every('title')}) OR ({every('content')}))", patterns * 2
     else:
         like = f"%{term}%"
-        where, params = "(title LIKE ? OR content LIKE ?)", [like, like]
+        # 위성(첨부)의 텍스트에만 있는 단어로도 노트를 찾는다
+        where = "(title LIKE ? OR content LIKE ? OR id IN (SELECT note_id FROM attachments WHERE text_content LIKE ?))"
+        params = [like, like, like]
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, title, content, category_id, created_at, modified_at FROM notes "

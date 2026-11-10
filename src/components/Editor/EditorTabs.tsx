@@ -158,6 +158,7 @@ export function EditorTabs() {
   const views: { id: EditorTab; label: string; onClick: () => void }[] = [
     { id: 'edit', label: '편집', onClick: () => setTab('edit') },
     { id: 'preview', label: '미리보기', onClick: () => setTab('preview') },
+    { id: 'satellite', label: '위성', onClick: () => setTab('satellite') },
     {
       id: 'starmap',
       label: '성도',

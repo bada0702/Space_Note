@@ -45,6 +45,11 @@ export function authHeaders(extra?: HeadersInit): HeadersInit {
   }
 }
 
+/** 멀티파트 업로드용: Content-Type을 브라우저가 정하도록 토큰만 반환. */
+export function authHeaderOnly(): HeadersInit {
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${base}${path}`, {
     headers: authHeaders(options?.headers),

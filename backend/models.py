@@ -98,3 +98,28 @@ class RouteCreate(BaseModel):
     note_a: str
     note_b: str
     status: Literal["confirmed", "rejected"] = "confirmed"
+
+
+class LinkCreate(BaseModel):
+    url: str
+    name: str
+    description: Optional[str] = None
+
+
+class MemoCreate(BaseModel):
+    name: str
+    text: str
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    note_id: str
+    type: str
+    name: str
+    file_path: Optional[str] = None
+    mime: Optional[str] = None
+    size: int = 0
+    url: Optional[str] = None
+    text_content: str = ""
+    sort_order: int = 0
+    created_at: str

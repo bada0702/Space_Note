@@ -58,3 +58,11 @@ def test_reset_deletes_everything_but_settings(client):
     assert not (vault / "attachments").exists()
     assert not (vault / "은하1").exists()  # 비게 된 은하 폴더는 정리
     assert (vault / "keep.txt").read_text(encoding="utf-8") == "남겨야 함"  # 노트와 무관한 파일은 유지
+
+
+def test_reset_deletes_satellite_rows(client):
+    note = client.post("/notes", json={"title": "행성", "content": "본문"}, headers=AUTH).json()
+    client.post(f"/notes/{note['id']}/attachments/memo", json={"name": "m", "text": "t"}, headers=AUTH)
+    assert client.post("/reset", json={"confirm": "초기화"}, headers=AUTH).status_code == 200
+    with get_conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM attachments").fetchone()[0] == 0

@@ -20,7 +20,7 @@ CONFIRM_TEXT = "초기화"
 _TABLES = (
     "notes", "categories", "entities", "tags", "routes",
     "concepts", "concept_aliases", "note_concepts", "relations",
-    "conversations", "conversation_messages",
+    "conversations", "conversation_messages", "attachments",
 )
 
 
