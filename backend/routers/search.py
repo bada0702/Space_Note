@@ -285,6 +285,18 @@ class _PairEvidence:
         return "none"
 
 
+def ranked_routes(ev: _PairEvidence, rejected: set[tuple[str, str]]) -> dict[str, list[tuple[str, str]]]:
+    """노트 id → 그 노트의 상위 항로 쌍 키 (근거 점수 내림차순, 노트당 상한까지)."""
+    by_note: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for key in ev.keys() - rejected:
+        by_note[key[0]].append(key)
+        by_note[key[1]].append(key)
+    for keys in by_note.values():
+        keys.sort(key=lambda k: (ev.score(k), k), reverse=True)
+        del keys[_MAX_ROUTES_PER_NOTE:]
+    return dict(by_note)
+
+
 @router.get("/discoveries/routes")
 def discovery_routes():
     """노트 쌍을 항로(route)로 반환 — 성도의 연결선 렌더링용. 근거는 _PairEvidence 참고.
@@ -301,15 +313,9 @@ def discovery_routes():
     confirmed = {(r["note_a"], r["note_b"]) for r in crows if r["status"] == "confirmed"}
     rejected = {(r["note_a"], r["note_b"]) for r in crows if r["status"] == "rejected"}
 
-    by_note: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    for key in ev.keys() - rejected:
-        by_note[key[0]].append(key)
-        by_note[key[1]].append(key)
-
     keep: set[tuple[str, str]] = set()
-    for note_id, keys in by_note.items():
-        keys.sort(key=lambda k: (ev.score(k), k), reverse=True)
-        keep.update(keys[:_MAX_ROUTES_PER_NOTE])
+    for keys in ranked_routes(ev, rejected).values():
+        keep.update(keys)
 
     # 확정 항로는 발견 쌍에서 사라져도 유지한다 — 사용자의 명시적 선택이므로
     # AI 재계산에 좌우되지 않는다.
