@@ -13,6 +13,10 @@ SpaceNote는 Markdown 노트 앱입니다. 노트를 저장하면 **키워드·�
 > 제품 배경과 컨셉은 [`PRD.MD`](./PRD.MD), 지식 그래프 설계는 [`docs/superpowers/specs/`](./docs/superpowers/specs/)를 참고하세요.
 
 ---
+윈도우 버전 
+exe 버전링크입니다. 다운로드 해서 사용하세요
+http://chojungwon.iptime.org/SpaceNote_0.1.0_x64-setup.zip
+
 
 ## 목차
 
