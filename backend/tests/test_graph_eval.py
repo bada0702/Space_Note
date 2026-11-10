@@ -92,6 +92,13 @@ def test_bundled_gold_sets_fit_the_vocabulary():
     assert [p for c in cases for p in run.validate(c)] == []
 
 
+def test_validate_rejects_bad_known_concepts():
+    base = {"id": "x", "concepts": [{"name": "A", "kind": "instance", "type": "도구"}], "relations": []}
+    assert run.validate({**base, "known_concepts": ["Docker"]}) == []
+    assert len(run.validate({**base, "known_concepts": "Docker"})) == 1
+    assert len(run.validate({**base, "known_concepts": ["Docker", 3]})) == 1
+
+
 def test_validate_reports_unknown_vocabulary():
     case = {"id": "x", "concepts": [{"name": "A", "kind": "thing", "type": "장비"}, {"name": "B"}],
             "relations": [{"s": "A", "p": "탑재", "o": "B"}, {"s": "A", "p": "x", "o": "없음"}]}

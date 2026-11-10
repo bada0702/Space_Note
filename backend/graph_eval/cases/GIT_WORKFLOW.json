@@ -1,0 +1,122 @@
+{
+ "note": "GIT_WORKFLOW.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "Git",
+   "kind": "instance",
+   "type": [
+    "개발 도구",
+    "도구"
+   ]
+  },
+  {
+   "name": "GitHub",
+   "kind": "instance",
+   "type": [
+    "플랫폼·서비스",
+    "도구"
+   ]
+  },
+  {
+   "name": "기능 브랜치",
+   "kind": "instance",
+   "type": [
+    "개념",
+    "기술"
+   ],
+   "aliases": [
+    "feature branch"
+   ]
+  },
+  {
+   "name": "병합 충돌",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ],
+   "aliases": [
+    "merge conflict"
+   ]
+  },
+  {
+   "name": "rebase",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "개념"
+   ],
+   "aliases": [
+    "리베이스"
+   ]
+  },
+  {
+   "name": "pre-commit",
+   "kind": "instance",
+   "type": [
+    "개발 도구",
+    "도구"
+   ]
+  },
+  {
+   "name": "ruff",
+   "kind": "instance",
+   "type": [
+    "개발 도구",
+    "도구"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "s": "GitHub",
+   "p": [
+    "의존한다",
+    "사용한다",
+    "연동한다"
+   ],
+   "o": "Git"
+  },
+  {
+   "s": "rebase",
+   "p": "해결한다",
+   "o": "병합 충돌"
+  },
+  {
+   "s": "pre-commit",
+   "p": [
+    "연동한다",
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "ruff"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "기능 브랜치",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "Git"
+  },
+  {
+   "s": "기능 브랜치",
+   "p": [
+    "원인이다",
+    "관련있다"
+   ],
+   "o": "병합 충돌"
+  },
+  {
+   "s": "rebase",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "Git"
+  }
+ ]
+}

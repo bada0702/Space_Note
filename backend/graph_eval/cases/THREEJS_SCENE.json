@@ -1,0 +1,114 @@
+{
+ "note": "THREEJS_SCENE.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "Three.js",
+   "kind": "instance",
+   "type": [
+    "프레임워크·라이브러리",
+    "도구"
+   ],
+   "aliases": [
+    "three"
+   ]
+  },
+  {
+   "name": "WebGL",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "프로토콜"
+   ]
+  },
+  {
+   "name": "JavaScript",
+   "kind": "instance",
+   "type": "프로그래밍 언어",
+   "aliases": [
+    "자바스크립트"
+   ]
+  },
+  {
+   "name": "InstancedMesh",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "개념"
+   ]
+  },
+  {
+   "name": "draw call 증가",
+   "kind": "instance",
+   "type": [
+    "문제"
+   ]
+  },
+  {
+   "name": "dispose",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "개념"
+   ],
+   "aliases": [
+    "dispose()"
+   ]
+  },
+  {
+   "name": "메모리 누수",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "s": "Three.js",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "WebGL"
+  },
+  {
+   "s": "Three.js",
+   "p": "작성 언어",
+   "o": "JavaScript"
+  },
+  {
+   "s": "InstancedMesh",
+   "p": "일부이다",
+   "o": "Three.js"
+  },
+  {
+   "s": "InstancedMesh",
+   "p": "해결한다",
+   "o": "draw call 증가"
+  },
+  {
+   "s": "dispose",
+   "p": "해결한다",
+   "o": "메모리 누수"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "dispose",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "Three.js"
+  },
+  {
+   "s": "Three.js",
+   "p": [
+    "관련있다"
+   ],
+   "o": "메모리 누수"
+  }
+ ]
+}

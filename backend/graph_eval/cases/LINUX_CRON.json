@@ -1,0 +1,132 @@
+{
+ "note": "LINUX_CRON.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "cron",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ],
+   "aliases": [
+    "크론"
+   ]
+  },
+  {
+   "name": "Linux",
+   "kind": "instance",
+   "type": [
+    "플랫폼·서비스",
+    "도구"
+   ],
+   "aliases": [
+    "리눅스"
+   ]
+  },
+  {
+   "name": "crontab",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ]
+  },
+  {
+   "name": "cleanup.sh",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ],
+   "aliases": [
+    "정리 스크립트"
+   ]
+  },
+  {
+   "name": "Bash",
+   "kind": "instance",
+   "type": "프로그래밍 언어"
+  },
+  {
+   "name": "logrotate",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ]
+  },
+  {
+   "name": "로그 파일 증가",
+   "kind": "instance",
+   "type": [
+    "문제"
+   ]
+  },
+  {
+   "name": "7일",
+   "kind": "literal",
+   "type": "값"
+  }
+ ],
+ "relations": [
+  {
+   "s": "cron",
+   "p": [
+    "실행 환경",
+    "의존한다"
+   ],
+   "o": "Linux"
+  },
+  {
+   "s": "cleanup.sh",
+   "p": "작성 언어",
+   "o": "Bash"
+  },
+  {
+   "s": "logrotate",
+   "p": "해결한다",
+   "o": "로그 파일 증가"
+  },
+  {
+   "s": "logrotate",
+   "p": [
+    "실행 환경",
+    "의존한다"
+   ],
+   "o": "Linux"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "cron",
+   "p": [
+    "사용한다",
+    "관련있다"
+   ],
+   "o": "cleanup.sh"
+  },
+  {
+   "s": "crontab",
+   "p": [
+    "일부이다",
+    "관련있다"
+   ],
+   "o": "cron"
+  },
+  {
+   "s": "logrotate",
+   "p": [
+    "보관 기간",
+    "보관",
+    "기간"
+   ],
+   "o": "7일"
+  }
+ ],
+ "known_concepts": [
+  "cron",
+  "Linux",
+  "Bash"
+ ]
+}

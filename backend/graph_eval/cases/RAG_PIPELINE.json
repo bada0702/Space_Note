@@ -1,0 +1,156 @@
+{
+ "note": "RAG_PIPELINE.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "RAG",
+   "kind": "instance",
+   "type": "기술",
+   "aliases": [
+    "검색 증강 생성"
+   ]
+  },
+  {
+   "name": "LangChain",
+   "kind": "instance",
+   "type": [
+    "프레임워크·라이브러리",
+    "도구"
+   ],
+   "aliases": [
+    "랭체인"
+   ]
+  },
+  {
+   "name": "Embedding",
+   "kind": "instance",
+   "type": "기술",
+   "aliases": [
+    "임베딩"
+   ]
+  },
+  {
+   "name": "FAISS",
+   "kind": "instance",
+   "type": [
+    "데이터베이스",
+    "도구"
+   ]
+  },
+  {
+   "name": "벡터DB",
+   "kind": "class",
+   "type": [
+    "데이터베이스",
+    "개념",
+    "기술"
+   ],
+   "aliases": [
+    "벡터 저장소",
+    "벡터 데이터베이스"
+   ]
+  },
+  {
+   "name": "Ollama",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "플랫폼·서비스"
+   ],
+   "aliases": [
+    "올라마"
+   ]
+  },
+  {
+   "name": "RAGAS",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "프레임워크·라이브러리"
+   ]
+  },
+  {
+   "name": "500토큰",
+   "kind": "literal",
+   "type": "값",
+   "aliases": [
+    "500"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "s": "LangChain",
+   "p": [
+    "구현한다",
+    "사용한다"
+   ],
+   "o": "RAG"
+  },
+  {
+   "s": "RAG",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "Embedding"
+  },
+  {
+   "s": "FAISS",
+   "p": "인스턴스이다",
+   "o": "벡터DB"
+  },
+  {
+   "s": "RAG",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "FAISS"
+  },
+  {
+   "s": "LangChain",
+   "p": [
+    "연동한다",
+    "사용한다"
+   ],
+   "o": "Ollama"
+  },
+  {
+   "s": "RAG",
+   "p": [
+    "청크 크기",
+    "크기"
+   ],
+   "o": "500토큰"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "RAG",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "Ollama"
+  },
+  {
+   "s": "RAGAS",
+   "p": [
+    "관련있다",
+    "사용한다"
+   ],
+   "o": "RAG"
+  },
+  {
+   "s": "RAG",
+   "p": "사용한다",
+   "o": "벡터DB"
+  }
+ ],
+ "known_concepts": [
+  "RAG",
+  "LangChain",
+  "FAISS"
+ ]
+}

@@ -55,6 +55,9 @@ def load_cases(names: list[str] | None, cases_dir: Path = CASES) -> list[dict]:
 def validate(case: dict) -> list[str]:
     """정답 세트가 현재 추출 어휘를 벗어나면 그 관계·유형은 절대 맞힐 수 없으므로 미리 알린다."""
     problems = []
+    known = case.get("known_concepts", [])
+    if not isinstance(known, list) or not all(isinstance(k, str) for k in known):
+        problems.append(f"{case['id']}: known_concepts는 문자열 목록이어야 함")
     kinds = {c["name"]: c.get("kind") for c in case["concepts"]}
     for c in case["concepts"]:
         if c.get("kind") and c["kind"] not in ge.KINDS:

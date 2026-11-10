@@ -1,0 +1,133 @@
+{
+ "note": "DOCKER_INSTALL.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "Docker",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "플랫폼·서비스"
+   ],
+   "aliases": [
+    "도커",
+    "docker-ce"
+   ]
+  },
+  {
+   "name": "Ubuntu",
+   "kind": "instance",
+   "type": [
+    "플랫폼·서비스",
+    "도구"
+   ],
+   "aliases": [
+    "우분투"
+   ]
+  },
+  {
+   "name": "apt",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ]
+  },
+  {
+   "name": "Docker Compose",
+   "kind": "instance",
+   "type": [
+    "개발 도구",
+    "도구"
+   ],
+   "aliases": [
+    "Compose"
+   ]
+  },
+  {
+   "name": "권한 오류",
+   "kind": "instance",
+   "type": [
+    "오류",
+    "문제"
+   ],
+   "aliases": [
+    "permission denied"
+   ]
+  },
+  {
+   "name": "docker 그룹",
+   "kind": "instance",
+   "type": [
+    "개념",
+    "기술"
+   ]
+  },
+  {
+   "name": "22.04",
+   "kind": "literal",
+   "type": "값"
+  }
+ ],
+ "relations": [
+  {
+   "s": "Docker",
+   "p": [
+    "실행 환경",
+    "의존한다",
+    "사용한다"
+   ],
+   "o": "Ubuntu"
+  },
+  {
+   "s": "Docker Compose",
+   "p": [
+    "의존한다",
+    "사용한다",
+    "연동한다"
+   ],
+   "o": "Docker"
+  },
+  {
+   "s": "docker 그룹",
+   "p": "해결한다",
+   "o": "권한 오류"
+  },
+  {
+   "s": "Ubuntu",
+   "p": "버전",
+   "o": "22.04"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "apt",
+   "p": [
+    "관련있다",
+    "사용한다"
+   ],
+   "o": "Docker"
+  },
+  {
+   "s": "Docker",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "apt"
+  },
+  {
+   "s": "Docker",
+   "p": [
+    "관련있다",
+    "원인이다"
+   ],
+   "o": "권한 오류"
+  }
+ ],
+ "known_concepts": [
+  "Docker",
+  "Ubuntu",
+  "Docker Compose"
+ ]
+}

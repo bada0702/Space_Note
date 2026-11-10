@@ -1,0 +1,117 @@
+{
+ "note": "K8S_TROUBLESHOOT.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "Kubernetes",
+   "kind": "instance",
+   "type": [
+    "플랫폼·서비스",
+    "도구"
+   ],
+   "aliases": [
+    "쿠버네티스",
+    "k8s"
+   ]
+  },
+  {
+   "name": "Pod",
+   "kind": "class",
+   "type": [
+    "개념",
+    "기술"
+   ],
+   "aliases": [
+    "파드"
+   ]
+  },
+  {
+   "name": "CrashLoopBackOff",
+   "kind": "instance",
+   "type": [
+    "오류",
+    "문제"
+   ]
+  },
+  {
+   "name": "메모리 부족",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ],
+   "aliases": [
+    "OOMKilled",
+    "OOM"
+   ]
+  },
+  {
+   "name": "kubectl",
+   "kind": "instance",
+   "type": [
+    "개발 도구",
+    "도구"
+   ]
+  },
+  {
+   "name": "resource limits",
+   "kind": "instance",
+   "type": [
+    "개념",
+    "기술"
+   ],
+   "aliases": [
+    "리소스 제한"
+   ]
+  },
+  {
+   "name": "1Gi",
+   "kind": "literal",
+   "type": "값"
+  }
+ ],
+ "relations": [
+  {
+   "s": "kubectl",
+   "p": [
+    "사용한다",
+    "연동한다",
+    "의존한다"
+   ],
+   "o": "Kubernetes"
+  },
+  {
+   "s": "Pod",
+   "p": "일부이다",
+   "o": "Kubernetes"
+  },
+  {
+   "s": "메모리 부족",
+   "p": "원인이다",
+   "o": "CrashLoopBackOff"
+  },
+  {
+   "s": "resource limits",
+   "p": "해결한다",
+   "o": "메모리 부족"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "resource limits",
+   "p": [
+    "메모리 제한",
+    "limits",
+    "값"
+   ],
+   "o": "1Gi"
+  },
+  {
+   "s": "Pod",
+   "p": [
+    "관련있다"
+   ],
+   "o": "CrashLoopBackOff"
+  }
+ ]
+}

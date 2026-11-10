@@ -1,0 +1,124 @@
+{
+ "note": "FASTAPI_AUTH.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "FastAPI",
+   "kind": "instance",
+   "type": [
+    "프레임워크·라이브러리",
+    "도구"
+   ]
+  },
+  {
+   "name": "Python",
+   "kind": "instance",
+   "type": "프로그래밍 언어",
+   "aliases": [
+    "파이썬"
+   ]
+  },
+  {
+   "name": "OAuth2",
+   "kind": "instance",
+   "type": [
+    "프로토콜",
+    "기술"
+   ],
+   "aliases": [
+    "OAuth2 password flow"
+   ]
+  },
+  {
+   "name": "JWT",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "프로토콜"
+   ]
+  },
+  {
+   "name": "PyJWT",
+   "kind": "instance",
+   "type": [
+    "프레임워크·라이브러리",
+    "도구"
+   ]
+  },
+  {
+   "name": "토큰 만료 문제",
+   "kind": "instance",
+   "type": [
+    "문제"
+   ]
+  },
+  {
+   "name": "refresh token",
+   "kind": "instance",
+   "type": [
+    "기술",
+    "개념"
+   ]
+  },
+  {
+   "name": "15분",
+   "kind": "literal",
+   "type": "값"
+  }
+ ],
+ "relations": [
+  {
+   "s": "FastAPI",
+   "p": "작성 언어",
+   "o": "Python"
+  },
+  {
+   "s": "FastAPI",
+   "p": [
+    "사용한다",
+    "구현한다",
+    "의존한다"
+   ],
+   "o": "OAuth2"
+  },
+  {
+   "s": "PyJWT",
+   "p": [
+    "구현한다",
+    "사용한다"
+   ],
+   "o": "JWT"
+  },
+  {
+   "s": "refresh token",
+   "p": "해결한다",
+   "o": "토큰 만료 문제"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "FastAPI",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "JWT"
+  },
+  {
+   "s": "JWT",
+   "p": [
+    "만료 시간",
+    "유효 시간"
+   ],
+   "o": "15분"
+  },
+  {
+   "s": "OAuth2",
+   "p": [
+    "사용한다",
+    "관련있다"
+   ],
+   "o": "JWT"
+  }
+ ]
+}

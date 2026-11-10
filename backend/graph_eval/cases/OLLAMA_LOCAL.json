@@ -1,0 +1,125 @@
+{
+ "note": "OLLAMA_LOCAL.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "Ollama",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "플랫폼·서비스"
+   ],
+   "aliases": [
+    "올라마"
+   ]
+  },
+  {
+   "name": "llama.cpp",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "프레임워크·라이브러리"
+   ]
+  },
+  {
+   "name": "GGUF",
+   "kind": "instance",
+   "type": [
+    "데이터",
+    "기술"
+   ],
+   "aliases": [
+    "GGUF 형식"
+   ]
+  },
+  {
+   "name": "Gemma",
+   "kind": "instance",
+   "type": "AI 모델"
+  },
+  {
+   "name": "모델 다운로드 불가",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ]
+  },
+  {
+   "name": "GPU",
+   "kind": "class",
+   "type": [
+    "기기",
+    "물건"
+   ]
+  },
+  {
+   "name": "8GB",
+   "kind": "literal",
+   "type": "값"
+  }
+ ],
+ "relations": [
+  {
+   "s": "Ollama",
+   "p": [
+    "의존한다",
+    "사용한다"
+   ],
+   "o": "llama.cpp"
+  },
+  {
+   "s": "llama.cpp",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "GGUF"
+  },
+  {
+   "s": "Ollama",
+   "p": [
+    "사용한다",
+    "실행 환경"
+   ],
+   "o": "Gemma"
+  },
+  {
+   "s": "GGUF",
+   "p": "해결한다",
+   "o": "모델 다운로드 불가"
+  },
+  {
+   "s": "GPU",
+   "p": [
+    "메모리",
+    "VRAM",
+    "용량",
+    "메모리 용량"
+   ],
+   "o": "8GB"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "Ollama",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "GGUF"
+  },
+  {
+   "s": "Ollama",
+   "p": [
+    "사용한다",
+    "실행 환경"
+   ],
+   "o": "GPU"
+  }
+ ],
+ "known_concepts": [
+  "Ollama",
+  "llama.cpp"
+ ]
+}

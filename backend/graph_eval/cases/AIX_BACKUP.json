@@ -1,0 +1,131 @@
+{
+ "note": "AIX_BACKUP.md",
+ "status": "draft — 사용자 검토 대기",
+ "concepts": [
+  {
+   "name": "AIX",
+   "kind": "instance",
+   "type": [
+    "플랫폼·서비스",
+    "도구"
+   ]
+  },
+  {
+   "name": "mksysb",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ]
+  },
+  {
+   "name": "backup.ksh",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ],
+   "aliases": [
+    "백업 스크립트"
+   ]
+  },
+  {
+   "name": "ksh",
+   "kind": "instance",
+   "type": "프로그래밍 언어",
+   "aliases": [
+    "Korn shell"
+   ]
+  },
+  {
+   "name": "NFS",
+   "kind": "instance",
+   "type": [
+    "프로토콜",
+    "기술"
+   ]
+  },
+  {
+   "name": "cron",
+   "kind": "instance",
+   "type": [
+    "도구",
+    "개발 도구"
+   ]
+  },
+  {
+   "name": "디스크 공간 부족",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ],
+   "aliases": [
+    "공간 부족"
+   ]
+  },
+  {
+   "name": "백업 실패",
+   "kind": "instance",
+   "type": [
+    "문제",
+    "오류"
+   ]
+  }
+ ],
+ "relations": [
+  {
+   "s": "mksysb",
+   "p": [
+    "실행 환경",
+    "의존한다",
+    "사용한다"
+   ],
+   "o": "AIX"
+  },
+  {
+   "s": "backup.ksh",
+   "p": "작성 언어",
+   "o": "ksh"
+  },
+  {
+   "s": "backup.ksh",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "mksysb"
+  },
+  {
+   "s": "backup.ksh",
+   "p": [
+    "사용한다",
+    "의존한다"
+   ],
+   "o": "NFS"
+  },
+  {
+   "s": "디스크 공간 부족",
+   "p": "원인이다",
+   "o": "백업 실패"
+  }
+ ],
+ "acceptable": [
+  {
+   "s": "cron",
+   "p": [
+    "사용한다",
+    "관련있다"
+   ],
+   "o": "backup.ksh"
+  },
+  {
+   "s": "backup.ksh",
+   "p": [
+    "실행 환경",
+    "의존한다"
+   ],
+   "o": "AIX"
+  }
+ ]
+}
