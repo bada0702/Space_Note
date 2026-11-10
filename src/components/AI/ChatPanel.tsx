@@ -11,6 +11,8 @@ export function ChatPanel() {
   } = useAIStore()
   const { activeNote } = useNotesStore()
   const [input, setInput] = useState('')
+  // 모바일에서만 쓰이는 대화 기록 오버레이 토글 (데스크톱은 CSS로 항상 표시)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { loadSettings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -29,8 +31,8 @@ export function ChatPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
-    <ConversationList />
+    <div className={`sn-chat${historyOpen ? ' is-history-open' : ''}`} style={{ display: 'flex', height: '100%', position: 'relative' }}>
+    <ConversationList onPicked={() => setHistoryOpen(false)} />
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
       {/* 헤더 */}
       <div style={{
@@ -40,6 +42,17 @@ export function ChatPanel() {
         <span style={{ fontFamily: 'var(--font-title)', fontSize: 19, fontWeight: 700, color: 'var(--text-primary)', flex: 1 }}>
           AI 채팅
         </span>
+        <button
+          className="sn-chat-history-btn"
+          onClick={() => setHistoryOpen(true)}
+          style={{
+            fontSize: 12, color: 'var(--text-secondary)', padding: '2px 6px',
+            borderRadius: 3, border: '1px solid var(--border)',
+            background: 'none', cursor: 'pointer',
+          }}
+        >
+          기록
+        </button>
         <button
           onClick={clearMessages}
           style={{

@@ -11,7 +11,7 @@ function formatDate(iso: string): string {
 }
 
 /** AI 채팅 왼쪽의 대화 기록 목록 */
-export function ConversationList() {
+export function ConversationList({ onPicked }: { onPicked?: () => void }) {
   const {
     conversations, conversationId, streaming,
     loadConversations, openConversation, deleteConversation, clearMessages,
@@ -35,13 +35,24 @@ export function ConversationList() {
   }
 
   return (
-    <div style={{
+    <div className="sn-convlist" style={{
       width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column',
       borderRight: '1px solid var(--border)',
     }}>
-      <div style={{ padding: '14px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ padding: '14px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8 }}>
         <button
-          onClick={clearMessages}
+          className="sn-chat-history-btn"
+          onClick={onPicked}
+          aria-label="기록 닫기"
+          style={{
+            padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)',
+            background: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
+          }}
+        >
+          닫기
+        </button>
+        <button
+          onClick={() => { clearMessages(); onPicked?.() }}
           disabled={streaming}
           style={{
             width: '100%', padding: '7px 10px', borderRadius: 6,
@@ -65,7 +76,10 @@ export function ConversationList() {
           return (
             <div
               key={c.id}
-              onClick={() => openConversation(c.id).catch(e => console.error('대화 열기 실패:', e))}
+              onClick={() => {
+                openConversation(c.id).catch(e => console.error('대화 열기 실패:', e))
+                onPicked?.()
+              }}
               onMouseEnter={() => setHovered(c.id)}
               onMouseLeave={() => { setHovered(null); setConfirming(null) }}
               title={c.title}
