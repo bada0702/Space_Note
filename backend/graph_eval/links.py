@@ -3,7 +3,7 @@
 사용법 (backend 디렉터리에서):
   venv/bin/python -m graph_eval.links export     # 판정 안 된 쌍을 local/links_labels.csv에 추가
   venv/bin/python -m graph_eval.links score      # 판정 결과로 정밀도 보고서 작성
-  venv/bin/python -m graph_eval.links score --hub-share 0.1
+  venv/bin/python -m graph_eval.links score --hub-share 0.1 --min-score 5
 
 표본(local/links_sample.json)은 처음 실행할 때 고정 시드로 뽑아 저장하고 이후 재사용한다.
 판정 파일의 label 열: 1 = 관련 있음, 0 = 무관, 빈칸 = 미판정.
@@ -144,6 +144,7 @@ def main(argv=None) -> None:
     ap.add_argument("command", choices=["export", "score"])
     ap.add_argument("--db", help="DB 경로 (기본: 설정의 DB_PATH)")
     ap.add_argument("--hub-share", type=float, help="routers.search._HUB_SHARE를 이번 실행에서만 바꾼다")
+    ap.add_argument("--min-score", type=float, help="routers.search._MIN_ROUTE_SCORE를 이번 실행에서만 바꾼다")
     ap.add_argument("--labels", type=Path, default=LOCAL / "links_labels.csv")
     ap.add_argument("--sample", type=Path, default=LOCAL / "links_sample.json")
     ap.add_argument("--out", type=Path, default=HERE / "reports")
@@ -152,7 +153,9 @@ def main(argv=None) -> None:
     from routers import search
     if args.hub_share is not None:
         search._HUB_SHARE = args.hub_share
-    params = {"hub_share": search._HUB_SHARE}
+    if args.min_score is not None:
+        search._MIN_ROUTE_SCORE = args.min_score
+    params = {"hub_share": search._HUB_SHARE, "min_score": search._MIN_ROUTE_SCORE}
 
     conn = open_ro(args.db)
     try:

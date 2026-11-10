@@ -100,3 +100,15 @@ def test_rejected_route_is_hidden_and_can_be_restored(client, monkeypatch):
 def test_route_status_rejects_unknown_value(client):
     r = client.post("/routes", json={"note_a": "x", "note_b": "y", "status": "maybe"}, headers=AUTH)
     assert r.status_code == 422
+
+
+def test_confirmed_route_kept_below_min_score(client, monkeypatch):
+    from routers import search
+    _mock_extract(monkeypatch, [{"name": "Docker", "type": "tech"}])
+    a = _create(client, "노트A", "Docker 공부")
+    b = _create(client, "노트B", "Docker 배포")
+    lo, hi = sorted([a["id"], b["id"]])
+    client.post("/routes", json={"note_a": lo, "note_b": hi}, headers=AUTH)
+    monkeypatch.setattr(search, "_MIN_ROUTE_SCORE", 100.0)
+    routes = client.get("/discoveries/routes", headers=AUTH).json()
+    assert [(r["note_a"], r["note_b"], r["confirmed"]) for r in routes] == [(lo, hi, True)]

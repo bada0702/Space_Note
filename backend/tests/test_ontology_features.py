@@ -342,3 +342,11 @@ def test_graph_analyze_queues_only_missing(client, monkeypatch):
         conn.execute("UPDATE notes SET graph_status = 'idle' WHERE id = ?", (c["id"],))
     assert client.post("/graph/analyze", headers=AUTH).json() == {"queued": 2}
     assert client.get(f"/notes/{a['id']}", headers=AUTH).json()["graph_status"] == "done"
+
+
+def test_weak_pairs_dropped_below_min_score(client, monkeypatch):
+    from routers import search
+    _graph_fixture(client)
+    monkeypatch.setattr(search, "_MIN_ROUTE_SCORE", 100.0)
+    assert client.get("/discoveries/routes", headers=AUTH).json() == []
+    assert client.get("/discoveries", headers=AUTH).json() == []

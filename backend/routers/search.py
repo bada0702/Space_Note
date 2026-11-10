@@ -73,6 +73,8 @@ def discoveries(note_id: Optional[str] = None):
 
     agg: dict[str, dict] = {}
     for key in ev.keys() - rejected:
+        if ev.score(key) < _MIN_ROUTE_SCORE:
+            continue
         a, b = key
         if note_id:
             if note_id not in key:
@@ -159,6 +161,8 @@ _HUB_SHARE = 0.3
 _HUB_MIN_NOTES = 10
 _RELATION_WEIGHT = 1.0
 _KEYWORD_WEIGHT = 0.5
+# 근거 점수가 이보다 낮은 쌍은 항로·발견으로 내지 않는다 (확정 항로는 예외). 값은 graph_eval.links로 정한다
+_MIN_ROUTE_SCORE = 0.0
 
 
 def _hub_concepts(concept_notes: dict[str, set[str]], total: int) -> set[str]:
@@ -303,6 +307,8 @@ def ranked_routes(ev: _PairEvidence, rejected: set[tuple[str, str]]) -> dict[str
     """노트 id → 그 노트의 상위 항로 쌍 키 (근거 점수 내림차순, 노트당 상한까지)."""
     by_note: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for key in ev.keys() - rejected:
+        if ev.score(key) < _MIN_ROUTE_SCORE:
+            continue
         by_note[key[0]].append(key)
         by_note[key[1]].append(key)
     for keys in by_note.values():
