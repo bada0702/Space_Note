@@ -6,6 +6,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
+from services.graph_extraction import VALID_STRUCT_SQL
 from services.textnorm import norm_name
 
 MAX_HOPS = 2
@@ -115,6 +116,7 @@ def expand(conn, seeds: dict[str, ConceptHit]) -> dict[str, ConceptHit]:
             f"FROM relations r JOIN concepts cs ON cs.id = r.subj_id JOIN concepts co ON co.id = r.obj_id "
             f"WHERE (r.subj_id IN ({ph}) OR r.obj_id IN ({ph})) "
             f"AND cs.kind != 'literal' AND co.kind != 'literal' "  # 값 노드는 노트 안 정보일 뿐
+            f"AND {VALID_STRUCT_SQL} "
             f"GROUP BY r.subj_id, r.pred, r.obj_id",
             (*frontier, *frontier),
         ).fetchall()

@@ -144,7 +144,7 @@ def test_migration_v2_converts_concepts_to_ontology(monkeypatch, tmp_path):
     assert preds == {("RAG", "인스턴스이다", "검색기법"), ("검색기법", "하위클래스이다", "검색기법2"),
                      ("FAISS", "인스턴스이다", "벡터DB"), ("RAG", "사용한다", "FAISS")}
     assert graph_hash is None
-    assert version == 2
+    assert version == 3   # v2 변환 뒤 v3(note_concepts.kind)까지 이어서 적용된다
 
 
 def test_migration_v2_runs_once(monkeypatch, tmp_path):
@@ -172,3 +172,32 @@ def test_settings_has_graph_model_columns(monkeypatch, tmp_path):
     row = conn.execute("SELECT graph_model, ollama_custom_models FROM settings").fetchone()
     conn.close()
     assert row == ("gemini-3.1-flash-lite", "[]")
+
+
+def test_migration_fills_note_concept_kind(monkeypatch, tmp_path):
+    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "legacy_kind.db"))
+    from config import settings
+    settings.reload()
+
+    # note_concepts에 kind 컬럼이 없는 user_version 2 DB
+    conn = sqlite3.connect(settings.DB_PATH)
+    conn.execute("CREATE TABLE concepts (id TEXT PRIMARY KEY, name TEXT NOT NULL, norm TEXT NOT NULL UNIQUE, "
+                 "type TEXT NOT NULL DEFAULT '개념', kind TEXT NOT NULL DEFAULT 'instance', created_at TEXT NOT NULL)")
+    conn.execute("CREATE TABLE note_concepts (note_id TEXT NOT NULL, concept_id TEXT NOT NULL, "
+                 "weight INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (note_id, concept_id))")
+    conn.execute("INSERT INTO concepts VALUES ('c1', 'RAG', 'rag', '기술', 'class', 'now')")
+    conn.execute("INSERT INTO note_concepts VALUES ('n1', 'c1', 2)")
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+
+    from db import init_db
+    init_db()
+
+    conn = sqlite3.connect(settings.DB_PATH)
+    kind = conn.execute("SELECT kind FROM note_concepts WHERE note_id = 'n1'").fetchone()[0]
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    conn.close()
+    assert kind == "class"
+    assert version == 3

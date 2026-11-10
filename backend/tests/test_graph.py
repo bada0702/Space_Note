@@ -548,17 +548,49 @@ def test_retrieval_ignores_literals(client):
     assert notes[a["id"]].concept.name == "FAISS"
 
 
-def test_reextract_updates_kind_of_shared_concept(client):
-    # 마이그레이션 근사값(instance)으로 저장된 공유 개념도 재추출 결과(class)로 바로잡혀야
-    # 이번 노트의 관계(하위클래스이다)가 방향 규칙에 맞게 저장된다
-    a = _note(client, "A", "a")
-    b = _note(client, "B", "b")
-    _store_onto(a["id"], [("Graph RAG", "instance")])
-    _store_onto(b["id"], [("Graph RAG", "class"), ("RAG", "class")], [("Graph RAG", "하위클래스이다", "RAG")])
+def _kind(name):
     from db import get_conn
     with get_conn() as conn:
-        kind = conn.execute("SELECT kind FROM concepts WHERE name = 'Graph RAG'").fetchone()[0]
-    assert kind == "class"
+        return conn.execute("SELECT kind FROM concepts WHERE name = ?", (name,)).fetchone()[0]
+
+
+def test_shared_concept_kind_follows_majority(client):
+    # 공유 개념의 kind는 그 개념을 쓰는 노트들의 다수결 — 동률이면 기존 값을 유지한다
+    a, b, c = (_note(client, t, "본문") for t in ("A", "B", "C"))
+    _store_onto(a["id"], [("Graph RAG", "instance")])
+    _store_onto(b["id"], [("Graph RAG", "class"), ("RAG", "class")], [("Graph RAG", "하위클래스이다", "RAG")])
+    assert _kind("Graph RAG") == "instance"
+    _store_onto(c["id"], [("Graph RAG", "class")])
+    assert _kind("Graph RAG") == "class"
+
+
+def test_kind_recomputed_after_note_delete(client):
+    x, y, z = (_note(client, t, "본문") for t in ("X", "Y", "Z"))
+    _store_onto(z["id"], [("Vector Store", "instance")])
+    _store_onto(x["id"], [("Vector Store", "class")])
+    _store_onto(y["id"], [("Vector Store", "class")])
+    assert _kind("Vector Store") == "class"
+    for n in (x, y):
+        assert client.delete(f"/notes/{n['id']}", headers=AUTH).status_code in (200, 204)
+    assert _kind("Vector Store") == "instance"
+
+
+def test_invalid_struct_relation_skipped_in_routes_and_expand(client):
+    from db import get_conn
+    from services import graph_retrieval
+    a, b = _note(client, "A", "본문"), _note(client, "B", "본문")
+    _store_onto(a["id"], [("FAISS", "instance"), ("벡터DB", "class")], [("FAISS", "인스턴스이다", "벡터DB")])
+    _store_onto(b["id"], [("벡터DB", "class")])
+    label = "FAISS —인스턴스이다→ 벡터DB"
+    routes = client.get("/discoveries/routes", headers=AUTH).json()
+    assert any(label in r["relations"] for r in routes)
+    with get_conn() as conn:
+        conn.execute("UPDATE concepts SET kind = 'instance' WHERE name = '벡터DB'")  # 규칙과 어긋난 관계
+    routes = client.get("/discoveries/routes", headers=AUTH).json()
+    assert not any(label in r["relations"] for r in routes)
+    with get_conn() as conn:
+        hits = graph_retrieval.expand(conn, graph_retrieval.match_seeds(conn, "FAISS"))
+    assert "벡터DB" not in {h.name for h in hits.values()}
 
 
 def test_alias_merge_in_one_note_keeps_relation_directions_valid(client):

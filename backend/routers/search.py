@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from db import get_conn
-from services.graph_extraction import predicate_strength
+from services.graph_extraction import VALID_STRUCT_SQL, predicate_strength
 from services.graph_retrieval import idf
 from services.textnorm import norm_name
 
@@ -201,7 +201,9 @@ class _PairEvidence:
         relation_rows = conn.execute(
             "SELECT r.subj_id AS s, r.pred AS p, r.obj_id AS o, r.note_id AS note_id, r.evidence AS evidence "
             "FROM relations r JOIN notes n ON n.id = r.note_id AND n.is_archived = 0 "
-            "JOIN concepts co ON co.id = r.obj_id AND co.kind != 'literal'"
+            "JOIN concepts cs ON cs.id = r.subj_id "
+            "JOIN concepts co ON co.id = r.obj_id AND co.kind != 'literal' "
+            f"WHERE {VALID_STRUCT_SQL}"
         ).fetchall()
         total = conn.execute("SELECT COUNT(*) FROM notes WHERE is_archived = 0").fetchone()[0] or 1
 
@@ -373,7 +375,9 @@ def route_path(from_id: str = Query(alias="from"), to_id: str = Query(alias="to"
         relation_rows = conn.execute(
             "SELECT r.subj_id AS s, r.pred AS p, r.obj_id AS o, MAX(r.evidence) AS evidence "
             "FROM relations r JOIN notes n ON n.id = r.note_id AND n.is_archived = 0 "
+            "JOIN concepts cs ON cs.id = r.subj_id "
             "JOIN concepts co ON co.id = r.obj_id AND co.kind != 'literal' "
+            f"WHERE {VALID_STRUCT_SQL} "
             "GROUP BY r.subj_id, r.pred, r.obj_id"
         ).fetchall()
 

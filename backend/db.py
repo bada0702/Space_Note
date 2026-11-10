@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS note_concepts (
   note_id TEXT NOT NULL,
   concept_id TEXT NOT NULL,
   weight INTEGER NOT NULL DEFAULT 1,
+  kind TEXT NOT NULL DEFAULT 'instance',
   PRIMARY KEY (note_id, concept_id)
 );
 CREATE INDEX IF NOT EXISTS idx_note_concepts_concept ON note_concepts(concept_id);
@@ -199,6 +200,16 @@ def init_db() -> None:
         if conn.execute("PRAGMA user_version").fetchone()[0] < 2:
             _migrate_to_ontology(conn)
             conn.execute("PRAGMA user_version = 2")
+
+        # 마이그레이션(user_version 3): 공유 개념 kind를 노트별 다수결로 정하기 위해 노트별 판단을 저장
+        if "kind" not in {r[1] for r in conn.execute("PRAGMA table_info(note_concepts)")}:
+            conn.execute("ALTER TABLE note_concepts ADD COLUMN kind TEXT NOT NULL DEFAULT 'instance'")
+        if conn.execute("PRAGMA user_version").fetchone()[0] < 3:
+            conn.execute(
+                "UPDATE note_concepts SET kind = COALESCE("
+                "(SELECT kind FROM concepts WHERE id = note_concepts.concept_id), 'instance')"
+            )
+            conn.execute("PRAGMA user_version = 3")
 
         conn.commit()
     finally:

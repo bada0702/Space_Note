@@ -167,6 +167,14 @@ def _predicate_lines() -> str:
     return "\n".join(lines)
 
 
+# 구조 관계가 저장된 kind와 맞는지 — 별칭 r(relations), cs(주어 concept), co(목적어 concept)를 전제로 한 조건.
+# 공유 개념의 kind는 다수결로 바뀔 수 있어, 예전에 저장된 구조 관계가 규칙과 어긋날 수 있다
+VALID_STRUCT_SQL = (
+    "(r.pred NOT IN ('인스턴스이다', '하위클래스이다') "
+    "OR (r.pred = '인스턴스이다' AND cs.kind = 'instance' AND co.kind = 'class') "
+    "OR (r.pred = '하위클래스이다' AND cs.kind = 'class' AND co.kind = 'class'))"
+)
+
 # 일반어는 개념으로 받지 않는다 (모델이 규칙을 어겨도 걸러냄)
 _GENERIC = {norm_name(w) for w in (
     "방법", "코드", "문제", "해결", "설명", "예시", "내용", "정리", "사용", "결과",
@@ -485,10 +493,7 @@ def _resolve_concept(conn, item: dict, note_id: str) -> str:
             if row:
                 break
     if row is not None:
-        cid = row[0]
-        # 공유 개념의 kind는 마지막 분석을 따른다 — 마이그레이션 근사값이 재분석으로 바로잡히고,
-        # 이번 노트에서 kind 기준으로 검증한 관계가 저장된 노드와 어긋나지 않게 한다
-        conn.execute("UPDATE concepts SET kind = ? WHERE id = ?", (kind, cid))
+        cid = row[0]  # 공유 개념의 kind는 덮어쓰지 않는다 — store_graph가 노트별 다수결로 정한다
     else:
         cid = str(uuid.uuid4())
         conn.execute(
@@ -517,9 +522,29 @@ def _resolve_concept(conn, item: dict, note_id: str) -> str:
     return cid
 
 
+def recompute_kinds(conn, concept_ids) -> None:
+    """개념마다 note_concepts.kind 다수결을 concepts.kind에 쓴다. 동률이면 현재 값을 유지한다."""
+    for cid in set(concept_ids):
+        votes = dict(conn.execute(
+            "SELECT kind, COUNT(*) FROM note_concepts WHERE concept_id = ? GROUP BY kind", (cid,)
+        ).fetchall())
+        if not votes:
+            continue
+        row = conn.execute("SELECT kind FROM concepts WHERE id = ?", (cid,)).fetchone()
+        if row is None:
+            continue
+        best = max(votes.values())
+        tops = [k for k, n in votes.items() if n == best]
+        kind = row[0] if row[0] in tops else ("class" if "class" in tops else sorted(tops)[0])
+        if kind != row[0]:
+            conn.execute("UPDATE concepts SET kind = ? WHERE id = ?", (kind, cid))
+
+
 def clear_note_graph(conn, note_id: str) -> None:
+    ids = [r[0] for r in conn.execute("SELECT concept_id FROM note_concepts WHERE note_id = ?", (note_id,))]
     conn.execute("DELETE FROM note_concepts WHERE note_id = ?", (note_id,))
     conn.execute("DELETE FROM relations WHERE note_id = ?", (note_id,))
+    recompute_kinds(conn, ids)
 
 
 def gc_orphans(conn) -> None:
@@ -559,20 +584,17 @@ def store_graph(conn, note_id: str, graph: dict) -> None:
     for item in graph["concepts"]:
         cid = _resolve_concept(conn, item, note_id)
         ids[item["norm"]] = cid
-        # 두 항목이 같은 개념으로 합쳐지면 더 큰 weight를 남긴다
+        # 두 항목이 같은 개념으로 합쳐지면 더 큰 weight를 남기고, kind가 엇갈리면 class를 남긴다
         conn.execute(
-            "INSERT INTO note_concepts (note_id, concept_id, weight) VALUES (?, ?, ?) "
-            "ON CONFLICT(note_id, concept_id) DO UPDATE SET weight = MAX(weight, excluded.weight)",
-            (note_id, cid, item["weight"]),
+            "INSERT INTO note_concepts (note_id, concept_id, weight, kind) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(note_id, concept_id) DO UPDATE SET weight = MAX(weight, excluded.weight), "
+            "kind = CASE WHEN excluded.kind = 'class' THEN 'class' ELSE kind END",
+            (note_id, cid, item["weight"], item["kind"]),
         )
-    # 별칭으로 한 개념에 합쳐진 항목들의 kind가 엇갈리면 하나로 정한다 (class 우선)
-    kinds: dict[str, str] = {}
-    for item in graph["concepts"]:
-        cid = ids[item["norm"]]
-        if kinds.get(cid) != "class":
-            kinds[cid] = item["kind"]
-    for cid, kind in kinds.items():
-        conn.execute("UPDATE concepts SET kind = ? WHERE id = ?", (kind, cid))
+    # 공유 개념의 kind는 이 노트를 포함한 노트별 판단의 다수결 — 관계는 그 결과로 검사한다
+    recompute_kinds(conn, ids.values())
+    kinds = {cid: conn.execute("SELECT kind FROM concepts WHERE id = ?", (cid,)).fetchone()[0]
+             for cid in set(ids.values())}
     for r in graph["relations"]:
         s, o = ids.get(r["s"]), ids.get(r["o"])
         if not s or not o or s == o:
